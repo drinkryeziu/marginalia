@@ -52,11 +52,12 @@ export default function LoginPage({ onAuth }) {
     setBusy(true);
     try {
       let user;
-      if (mode === "google") user = await auth.continueWithGoogle({ displayName, stayIn });
+      let isNew = false; // only a fresh account triggers the profile page
+      if (mode === "google") { user = await auth.continueWithGoogle({ displayName, stayIn }); isNew = !!user.isNew; }
       else if (mode === "reset") user = await auth.resetPassword({ username, newPassword: password, confirm, stayIn });
-      else if (mode === "signup") user = await auth.signUp({ username, displayName, password, stayIn });
+      else if (mode === "signup") { user = await auth.signUp({ username, displayName, password, stayIn }); isNew = true; }
       else user = await auth.logIn({ username, password, stayIn });
-      onAuth(user);
+      onAuth(user, isNew);
     } catch (e) {
       setError(e.message || "Something went wrong. Try again.");
       setBusy(false);

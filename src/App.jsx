@@ -3,26 +3,25 @@ import LoginPage from "./LoginPage.jsx";
 import ProfileSetup from "./ProfileSetup.jsx";
 import DiaryApp from "./DiaryApp.jsx";
 import * as auth from "./auth.js";
-import { hasProfile } from "./profile.js";
 
 export default function App() {
   const [user, setUser] = useState(null);
-  const [needsProfile, setNeedsProfile] = useState(false); // first-run onboarding
+  const [needsProfile, setNeedsProfile] = useState(false); // first-run onboarding (sign-up only)
   const [editingProfile, setEditingProfile] = useState(false); // reopened from the diary
   const [ready, setReady] = useState(false);
 
   // Restore an existing session (if "Keep me signed in" was checked).
+  // A restored session is never a fresh sign-up, so it goes straight to the diary.
   useEffect(() => {
-    const u = auth.getCurrentUser();
-    setUser(u);
-    setNeedsProfile(u ? !hasProfile(u.username) : false);
+    setUser(auth.getCurrentUser());
     setReady(true);
   }, []);
 
-  // On fresh sign-in/sign-up, send first-timers through the profile step.
-  const handleAuth = (u) => {
+  // The profile page appears ONLY right after sign-up. A normal login goes
+  // straight to the diary — the profile is reachable later via "Edit profile".
+  const handleAuth = (u, isNew) => {
     setUser(u);
-    setNeedsProfile(!hasProfile(u.username));
+    setNeedsProfile(!!isNew);
   };
 
   if (!ready) return null;

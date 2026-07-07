@@ -102,10 +102,11 @@ export async function continueWithGoogle({ displayName, stayIn }) {
   if (!name) throw new Error("Add a name so your pages can greet you.");
   const accounts = read(ACCOUNTS, {});
   const uname = "google_" + sanitizeUser(name);
+  const isNew = !accounts[uname]; // first time this Google identity signs in
   accounts[uname] = { ...(accounts[uname] || { provider: "google" }), displayName: name };
   write(ACCOUNTS, accounts);
   saveSession(uname, stayIn);
-  return { username: uname, displayName: name };
+  return { username: uname, displayName: name, isNew };
 }
 
 export async function resetPassword({ username, newPassword, confirm, stayIn }) {
