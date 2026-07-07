@@ -1,4 +1,4 @@
-// Design tokens for Marginalia. Single source of truth for color + type.
+// Design tokens for My Little Secret Diary. Single source of truth for color + type.
 // Palette: cool oatmeal paper, fountain-pen indigo ink, antique-brass accent.
 
 export const C = {

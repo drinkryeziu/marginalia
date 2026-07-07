@@ -1,4 +1,4 @@
-# Marginalia
+# My Little Secret Diary
 
 A quiet daily diary. This repo is the real, runnable starting point — the finalized
 login page plus a clean auth layer you can build on.

@@ -101,7 +101,7 @@ export default function LoginPage({ onAuth }) {
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 9, color: C.brass }}>
               <BookOpen size={22} strokeWidth={1.7} />
-              <span style={{ fontFamily: font.display, fontSize: 26, fontWeight: 500, color: C.paper, letterSpacing: "-0.01em" }}>Marginalia</span>
+              <span style={{ fontFamily: font.display, fontSize: 23, fontWeight: 500, color: C.paper, letterSpacing: "-0.01em", lineHeight: 1.1 }}>My Little Secret Diary</span>
             </div>
             <p style={{ fontFamily: font.body, fontStyle: "italic", fontSize: phone ? 15 : 17, color: "rgba(237,235,228,0.82)",
               margin: phone ? "8px 0 0" : "16px 0 0", lineHeight: 1.5, maxWidth: 220 }}>

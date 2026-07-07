@@ -230,7 +230,7 @@ export default function DiaryApp({ user, onLogout }) {
       <div style={{ padding: "20px 20px 14px", borderBottom: `1px solid ${C.line}` }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, color: C.brass }}>
           <BookOpen size={18} strokeWidth={1.7} />
-          <span style={{ fontFamily: display, fontSize: 19, fontWeight: 500, color: C.ink }}>Marginalia</span>
+          <span style={{ fontFamily: display, fontSize: 17, fontWeight: 500, color: C.ink, lineHeight: 1.1 }}>My Little Secret Diary</span>
         </div>
         <p style={{ fontFamily: body, fontSize: 13.5, color: C.inkSoft, margin: "10px 0 0" }}>{user.displayName}</p>
       </div>
