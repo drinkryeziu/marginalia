@@ -124,6 +124,16 @@ export async function resetPassword({ username, newPassword, confirm, stayIn }) 
   return { username: uname, displayName: acc.displayName };
 }
 
+// Lets the profile step update the name the diary greets you by.
+export function updateDisplayName(username, displayName) {
+  const accounts = read(ACCOUNTS, {});
+  const acc = accounts[username];
+  if (!acc) return null;
+  const name = (displayName || "").trim();
+  if (name) { acc.displayName = name; accounts[username] = acc; write(ACCOUNTS, accounts); }
+  return { username, displayName: acc.displayName };
+}
+
 export function logOut() {
   localStorage.removeItem(SESSION);
   sessionStorage.removeItem(SESSION);
