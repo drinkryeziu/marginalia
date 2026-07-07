@@ -115,6 +115,13 @@ const sideBtn = {
   display: "flex", alignItems: "center", gap: 8,
 };
 
+// Primary (indigo) variant — same look as the "Open my diary" button on login.
+const primarySideBtn = {
+  minHeight: 46, padding: "0 14px", borderRadius: 10, border: "none",
+  background: C.ink, cursor: "pointer", color: C.page, fontFamily: ui, fontSize: 15, fontWeight: 500,
+  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+};
+
 /* ============================ DIARY ============================ */
 export default function DiaryApp({ user, onLogout, onEditProfile }) {
   const vp = useViewport();
@@ -278,7 +285,7 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
         <button onClick={() => { onEditProfile?.(); setDrawerOpen(false); }} style={sideBtn}>
           <UserRound size={15} /> Edit profile
         </button>
-        <button onClick={onLogout} style={sideBtn}>
+        <button onClick={onLogout} style={primarySideBtn}>
           <LogOut size={15} /> Close the diary
         </button>
       </div>
