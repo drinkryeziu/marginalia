@@ -16,6 +16,10 @@
       * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
       input { font-family: inherit; }
       ::placeholder { color: #9A9AAB; font-style: italic; }
+      /* Rich-text diary entry: placeholder when empty + bold/italic rendering. */
+      .entry-editor:empty:before { content: attr(data-placeholder); color: #9A9AAB; font-style: italic; pointer-events: none; }
+      .entry-editor b, .entry-editor strong { font-weight: 700; }
+      .entry-editor i, .entry-editor em { font-style: italic; }
       @keyframes spin { to { transform: rotate(360deg); } }
       .spin { animation: spin 0.9s linear infinite; }
       @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }

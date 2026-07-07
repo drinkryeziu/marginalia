@@ -115,6 +115,37 @@ const sideBtn = {
   display: "flex", alignItems: "center", gap: 8,
 };
 
+/* A photo thumbnail that keeps its natural aspect ratio (no cropping) and only
+   shows its Remove button after a long-press. A short tap opens the lightbox. */
+function PhotoTile({ src, revealed, onOpen, onReveal, onRemove }) {
+  const timer = useRef(null);
+  const wasLong = useRef(false);
+  const start = () => {
+    wasLong.current = false;
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => { wasLong.current = true; onReveal(); }, 500);
+  };
+  const cancel = () => clearTimeout(timer.current);
+  const onClick = () => { if (wasLong.current) { wasLong.current = false; return; } onOpen(); };
+  return (
+    <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", border: `1px solid ${C.line}`, background: C.paper }}>
+      <img src={src} alt="" draggable={false}
+        onPointerDown={start} onPointerUp={cancel} onPointerMove={cancel} onPointerLeave={cancel}
+        onContextMenu={(e) => e.preventDefault()} onClick={onClick}
+        style={{ width: "100%", height: "auto", display: "block", cursor: "pointer",
+          userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }} />
+      {revealed && (
+        <button onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onRemove(); }} aria-label="Remove photo"
+          style={{ position: "absolute", top: 8, right: 8, height: 30, padding: "0 11px", borderRadius: 8, border: "none",
+            cursor: "pointer", background: "rgba(38,38,58,0.85)", color: "#fff", fontFamily: ui, fontSize: 12.5, fontWeight: 500,
+            display: "inline-flex", alignItems: "center", gap: 6, boxShadow: "0 2px 10px -2px rgba(0,0,0,0.5)" }}>
+          <X size={13} /> Remove
+        </button>
+      )}
+    </div>
+  );
+}
+
 // Primary (indigo) variant — same look as the "Open my diary" button on login.
 const primarySideBtn = {
   minHeight: 46, padding: "0 14px", borderRadius: 10, border: "none",
@@ -128,7 +159,8 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
   const { phone, tablet, persistent } = vp;
   const [index, setIndex] = useState(null);
   const [selected, setSelected] = useState(todayKey());
-  const [entry, setEntry] = useState({ text: "", photoIds: [] });
+  const [entry, setEntry] = useState({ text: "", html: "", photoIds: [] });
+  const [revealRemove, setRevealRemove] = useState(null); // photo id whose Remove button is shown
   const [photos, setPhotos] = useState({});
   const [saveState, setSaveState] = useState("idle");
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -139,6 +171,7 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
   const saveTimer = useRef(null);
   const savedTimer = useRef(null);
   const fileInput = useRef(null);
+  const editorRef = useRef(null); // the rich-text entry (contentEditable)
 
   const idxKey = `diary_index_${user.username}`;
   const entryKey = (d) => `diary_entry_${user.username}_${d}`;
@@ -146,6 +179,14 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
 
   useEffect(() => { (async () => setIndex(await store.get(idxKey, [])))(); }, [idxKey]);
   useEffect(() => { if (persistent) setDrawerOpen(false); }, [persistent]);
+
+  // Hide a photo's Remove button when tapping anywhere else.
+  useEffect(() => {
+    if (revealRemove == null) return;
+    const clear = () => setRevealRemove(null);
+    const t = setTimeout(() => document.addEventListener("pointerdown", clear), 0);
+    return () => { clearTimeout(t); document.removeEventListener("pointerdown", clear); };
+  }, [revealRemove]);
 
   useEffect(() => {
     let alive = true;
@@ -158,8 +199,16 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
         if (raw) loaded[id] = raw;
       }
       if (!alive) return;
-      setEntry({ text: e.text || "", photoIds: e.photoIds || [] });
+      // The editor is uncontrolled: set its HTML imperatively on load. Older
+      // entries only have plain `text`; render that safely via innerText.
+      const el = editorRef.current;
+      if (el) {
+        if (e.html != null) el.innerHTML = e.html;
+        else el.innerText = e.text || "";
+      }
+      setEntry({ text: e.text || "", html: el ? el.innerHTML : (e.html ?? ""), photoIds: e.photoIds || [] });
       setPhotos(loaded);
+      setRevealRemove(null);
       setSaveState("idle");
       setLoadingEntry(false);
     })();
@@ -170,7 +219,7 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
     setSaveState("saving");
     const hasContent = next.text.trim() || next.photoIds.length;
     if (hasContent) {
-      await store.set(entryKey(selected), { text: next.text, photoIds: next.photoIds, updatedAt: Date.now() });
+      await store.set(entryKey(selected), { text: next.text, html: next.html, photoIds: next.photoIds, updatedAt: Date.now() });
       setIndex((cur) => {
         const list = cur || [];
         if (list.includes(selected)) return list;
@@ -191,14 +240,29 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
     savedTimer.current = setTimeout(() => setSaveState("idle"), 1600);
   }, [selected, idxKey]);
 
-  const onText = (e) => {
-    const text = e.target.value;
+  // Read the contentEditable, mirror it into state, and debounce a save.
+  const readEditor = () => {
+    const el = editorRef.current;
+    if (!el) return;
+    // Collapse a stray <br> so the empty-state placeholder can show.
+    if (el.innerText.replace(/ /g, " ").trim() === "") el.innerHTML = "";
     setEntry((cur) => {
-      const next = { ...cur, text };
+      const next = { ...cur, text: el.innerText, html: el.innerHTML };
       clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => persist(next), 700);
       return next;
     });
+  };
+
+  // Cmd/Ctrl+B → bold, Cmd/Ctrl+I → italic on the current selection.
+  const onEditorKeyDown = (e) => {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    const k = e.key.toLowerCase();
+    if (k === "b" || k === "i") {
+      e.preventDefault();
+      document.execCommand(k === "b" ? "bold" : "italic");
+      readEditor();
+    }
   };
 
   async function addPhotos(files) {
@@ -225,7 +289,7 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
     const p = { ...photos }; delete p[id];
     setPhotos(p);
     const next = { ...entry, photoIds: ids };
-    setEntry(next); persist(next); setLightbox(null);
+    setEntry(next); persist(next); setLightbox(null); setRevealRemove(null);
   }
 
   const isToday = selected === todayKey();
@@ -361,26 +425,27 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
               </div>
             )}
 
-            <textarea value={entry.text} onChange={onText}
-              placeholder={showWelcome ? "Dear diary…" : "Continue the day…"} spellCheck
-              style={{ flex: 1, width: "100%", minHeight: phone ? 200 : 240, resize: "none", border: "none", outline: "none",
-                background: "transparent", color: C.ink, fontFamily: body, fontSize: textSize, lineHeight: 1.85 }} />
+            <div ref={editorRef} className="entry-editor" contentEditable suppressContentEditableWarning
+              role="textbox" aria-multiline="true" spellCheck
+              data-placeholder={showWelcome ? "Dear diary…" : "Continue the day…"}
+              onInput={readEditor} onKeyDown={onEditorKeyDown}
+              style={{ flex: 1, width: "100%", minHeight: phone ? 200 : 240, border: "none", outline: "none",
+                background: "transparent", color: C.ink, fontFamily: body, fontSize: textSize, lineHeight: 1.85,
+                whiteSpace: "pre-wrap", overflowWrap: "anywhere" }} />
 
             {entry.photoIds.length > 0 && (
               <div style={{ marginTop: 24, borderTop: `1px solid ${C.line}`, paddingTop: 22 }}>
-                <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fill, minmax(${phone ? 96 : 120}px, 1fr))`, gap: phone ? 8 : 12 }}>
+                <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fill, minmax(${phone ? 130 : 160}px, 1fr))`, gap: phone ? 8 : 12, alignItems: "start" }}>
                   {entry.photoIds.map((id) => photos[id] && (
-                    <div key={id} style={{ position: "relative", borderRadius: 10, overflow: "hidden", border: `1px solid ${C.line}`, aspectRatio: "1 / 1" }}>
-                      <img src={photos[id]} alt="" onClick={() => setLightbox(id)}
-                        style={{ width: "100%", height: "100%", objectFit: "cover", cursor: "zoom-in", display: "block" }} />
-                      <button onClick={() => removePhoto(id)} aria-label="Remove photo"
-                        style={{ position: "absolute", top: 6, right: 6, width: 30, height: 30, borderRadius: "50%", border: "none",
-                          cursor: "pointer", background: "rgba(38,38,58,0.72)", color: "#fff", display: "grid", placeItems: "center" }}>
-                        <X size={15} />
-                      </button>
-                    </div>
+                    <PhotoTile key={id} src={photos[id]} revealed={revealRemove === id}
+                      onOpen={() => { setRevealRemove(null); setLightbox(id); }}
+                      onReveal={() => setRevealRemove(id)}
+                      onRemove={() => removePhoto(id)} />
                   ))}
                 </div>
+                <p style={{ fontFamily: body, fontStyle: "italic", fontSize: 12.5, color: C.faint, margin: "12px 2px 0" }}>
+                  Press and hold a photo to remove it.
+                </p>
               </div>
             )}
             {uploadErr && <p style={{ fontFamily: body, color: C.danger, fontSize: 13.5, marginTop: 14 }}>{uploadErr}</p>}
