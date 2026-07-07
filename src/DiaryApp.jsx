@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { BookOpen, Camera, X, LogOut, Menu, Check, Loader2, UserRound } from "lucide-react";
+import { BookOpen, Camera, X, LogOut, Menu, Check, Loader2, UserRound, ChevronLeft } from "lucide-react";
 import { C, font } from "./theme.js";
 
 /* ------------------------------------------------------------------ *
@@ -234,9 +234,19 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
       paddingTop: "env(safe-area-inset-top)",
     }}>
       <div style={{ padding: "20px 20px 14px", borderBottom: `1px solid ${C.line}` }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, color: C.brass }}>
-          <BookOpen size={18} strokeWidth={1.7} />
-          <span style={{ fontFamily: display, fontSize: 17, fontWeight: 500, color: C.ink, lineHeight: 1.1 }}>My Little Secret Diary</span>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, color: C.brass, minWidth: 0 }}>
+            <BookOpen size={18} strokeWidth={1.7} />
+            <span style={{ fontFamily: display, fontSize: 17, fontWeight: 500, color: C.ink, lineHeight: 1.1 }}>My Little Secret Diary</span>
+          </div>
+          {/* Collapse button — only on phone/iPad where the shelf is a drawer. */}
+          {!persistent && (
+            <button onClick={() => setDrawerOpen(false)} aria-label="Collapse shelf"
+              style={{ flexShrink: 0, width: 34, height: 34, marginRight: -4, display: "grid", placeItems: "center",
+                background: "none", border: "none", cursor: "pointer", color: C.inkSoft }}>
+              <ChevronLeft size={20} />
+            </button>
+          )}
         </div>
         <p style={{ fontFamily: body, fontSize: 13.5, color: C.inkSoft, margin: "10px 0 0" }}>{user.displayName}</p>
       </div>
