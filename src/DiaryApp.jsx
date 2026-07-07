@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { BookOpen, Camera, X, LogOut, Menu, Check, Loader2, UserRound, ChevronLeft } from "lucide-react";
 import { C, font } from "./theme.js";
+import { getProfile } from "./profile.js";
 
 /* ------------------------------------------------------------------ *
  *  DiaryApp — the signed-in experience.
@@ -167,6 +168,7 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
   const [lightbox, setLightbox] = useState(null);
   const [uploadErr, setUploadErr] = useState("");
   const [loadingEntry, setLoadingEntry] = useState(true);
+  const [profile] = useState(() => getProfile(user.username)); // for the birthday greeting
 
   const saveTimer = useRef(null);
   const savedTimer = useRef(null);
@@ -296,6 +298,10 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
   const isBlank = !entry.text.trim() && entry.photoIds.length === 0;
   const showWelcome = isToday && isBlank && !loadingEntry;
 
+  // Birthday: does the selected day's month/day match the profile's birthday?
+  const isBirthday = !!(profile?.birthMonth && profile?.birthDay) &&
+    selected.slice(5) === `${String(profile.birthMonth).padStart(2, "0")}-${String(profile.birthDay).padStart(2, "0")}`;
+
   const sidebarW = phone ? "82vw" : tablet ? 248 : 264;
 
   const Sidebar = (
@@ -412,14 +418,16 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
               <div className="welcome" style={{ marginBottom: 20 }}>
                 <p style={{ fontFamily: ui, fontSize: 12.5, letterSpacing: "0.12em", textTransform: "uppercase", color: C.brass, margin: 0 }}>{prettyDate(selected)}</p>
                 <h1 style={{ fontFamily: display, fontSize: welcomeSize, fontWeight: 500, color: C.ink, margin: "12px 0 6px", lineHeight: 1.15, letterSpacing: "-0.015em" }}>
-                  {greeting()}, {user.displayName}.
+                  {isBirthday ? `Happy Birthday, ${user.displayName}! 🎉` : `${greeting()}, ${user.displayName}.`}
                 </h1>
                 <p style={{ fontFamily: body, fontStyle: "italic", fontSize: phone ? 16 : 17, color: C.inkSoft, margin: 0 }}>A fresh page. Begin wherever you like.</p>
                 <div style={{ height: 1, background: C.line, margin: "24px 0 0" }} />
               </div>
             ) : (
               <div style={{ marginBottom: 18 }}>
-                <p style={{ fontFamily: ui, fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase", color: C.brass, margin: 0 }}>{isToday ? "Today" : "On this day"}</p>
+                <p style={{ fontFamily: ui, fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase", color: C.brass, margin: 0 }}>
+                  {isBirthday ? `🎉 Happy Birthday, ${user.displayName}!` : (isToday ? "Today" : "On this day")}
+                </p>
                 <h1 style={{ fontFamily: display, fontSize: dateSize, fontWeight: 500, color: C.ink, margin: "7px 0 0", letterSpacing: "-0.01em", lineHeight: 1.2 }}>{prettyDate(selected)}</h1>
                 <div style={{ height: 1, background: C.line, margin: "20px 0 0" }} />
               </div>

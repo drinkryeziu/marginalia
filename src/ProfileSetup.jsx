@@ -19,6 +19,8 @@ const INTERESTS = [
   "Reading", "Travel", "Music", "Art", "Cooking", "Fitness",
   "Photography", "Writing", "Gardening", "Fashion", "Technology", "Cinema",
 ];
+const MONTHS = ["January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"];
 
 /* Collapses the two-panel layout into a stacked one below 640px (like login). */
 function usePhone() {
@@ -60,6 +62,8 @@ export default function ProfileSetup({ user, onDone, onCancel, mode = "onboard" 
   const [gender, setGender] = useState(saved.gender || "");
   const [firstName, setFirstName] = useState(saved.firstName ?? (user.displayName || ""));
   const [lastName, setLastName] = useState(saved.lastName || "");
+  const [birthMonth, setBirthMonth] = useState(saved.birthMonth ? String(saved.birthMonth) : "");
+  const [birthDay, setBirthDay] = useState(saved.birthDay ? String(saved.birthDay) : "");
   const [address, setAddress] = useState(saved.address || "");
   const [phoneNo, setPhoneNo] = useState(saved.phone || "");
   const [email, setEmail] = useState(saved.email || "");
@@ -84,7 +88,11 @@ export default function ProfileSetup({ user, onDone, onCancel, mode = "onboard" 
 
   function submit() {
     setBusy(true);
-    saveProfile(user.username, { gender, firstName, lastName, address, phone: phoneNo, email, interests, about, avatar });
+    saveProfile(user.username, {
+      gender, firstName, lastName, address, phone: phoneNo, email, interests, about, avatar,
+      birthMonth: birthMonth ? Number(birthMonth) : null,
+      birthDay: birthDay ? Number(birthDay) : null,
+    });
     const updated = firstName.trim() ? auth.updateDisplayName(user.username, firstName.trim()) : user;
     onDone(updated || user);
   }
@@ -194,6 +202,23 @@ export default function ProfileSetup({ user, onDone, onCancel, mode = "onboard" 
             <div>
               <label style={label}>Last name</label>
               <input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Last name" style={field} />
+            </div>
+          </div>
+
+          {/* Birthday — month & day only, no year */}
+          <div style={{ marginBottom: 20 }}>
+            <label style={label}>Birthday <span style={{ textTransform: "none", letterSpacing: 0, color: C.faint }}>(month &amp; day)</span></label>
+            <div style={{ ...twoCol, marginTop: 8 }}>
+              <select value={birthMonth} onChange={(e) => setBirthMonth(e.target.value)}
+                style={{ ...field, cursor: "pointer", WebkitAppearance: "menulist", color: birthMonth ? C.ink : C.faint }}>
+                <option value="">Month</option>
+                {MONTHS.map((m, i) => <option key={m} value={i + 1} style={{ color: C.ink }}>{m}</option>)}
+              </select>
+              <select value={birthDay} onChange={(e) => setBirthDay(e.target.value)}
+                style={{ ...field, cursor: "pointer", WebkitAppearance: "menulist", color: birthDay ? C.ink : C.faint }}>
+                <option value="">Day</option>
+                {Array.from({ length: 31 }, (_, i) => <option key={i} value={i + 1} style={{ color: C.ink }}>{i + 1}</option>)}
+              </select>
             </div>
           </div>
 

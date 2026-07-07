@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { BookOpen, ChevronLeft, Lock, Eye, EyeOff, Check, Loader2 } from "lucide-react";
+import { BookOpen, ChevronLeft, Lock, Eye, EyeOff, Check, Loader2, Mail } from "lucide-react";
 import { C, font } from "./theme.js";
 import * as auth from "./auth.js";
 
@@ -25,19 +25,41 @@ function GoogleG() {
   );
 }
 
+/* Live password strength: 8 chars is required; capital/number/symbol are
+   only suggested (never enforced). */
+function Strength({ pw }) {
+  const len = pw.length >= 8;
+  const score = [len, /[A-Z]/.test(pw), /[0-9]/.test(pw), /[^A-Za-z0-9]/.test(pw)].filter(Boolean).length;
+  let caption, color;
+  if (!pw) { caption = "At least 8 characters. A capital letter, number, and symbol are suggested."; color = C.faint; }
+  else if (!len) { caption = "A little longer — 8 characters minimum."; color = C.danger; }
+  else if (score >= 4) { caption = "Strong password."; color = C.brassDeep; }
+  else { caption = "Good. Add a capital, number, or symbol to strengthen it (optional)."; color = C.faint; }
+  return (
+    <div style={{ marginTop: 9 }}>
+      <div style={{ display: "flex", gap: 4 }}>
+        {[0, 1, 2, 3].map((i) => (
+          <span key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: i < score ? C.brass : C.line }} />
+        ))}
+      </div>
+      <p style={{ fontFamily: font.ui, fontSize: 12, color, margin: "7px 0 0", lineHeight: 1.45 }}>{caption}</p>
+    </div>
+  );
+}
+
 const HEADS = {
   login: ["Welcome back", "Sign in to pick up where you left off."],
-  signup: ["Begin your diary", "A name and a password is all it takes."],
+  signup: ["Create your account", "Your email and a password — that's all it takes."],
   google: ["One last thing", "What should your pages call you?"],
-  reset: ["Reset your password", "No email needed here — just set a new one."],
 };
-const BTN = { login: "Open my diary", signup: "Start writing", google: "Continue with Google", reset: "Save and sign in" };
+const BTN = { login: "Open my diary", signup: "Create account", google: "Continue with Google" };
 
 export default function LoginPage({ onAuth }) {
   const phone = usePhone();
   const [mode, setModeRaw] = useState("login");
-  const [username, setUsername] = useState("");
-  const [displayName, setDisplayName] = useState("");
+  const [resetStep, setResetStep] = useState("email"); // "email" -> "set"
+  const [email, setEmail] = useState("");
+  const [displayName, setDisplayName] = useState(""); // Google flow only
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [stayIn, setStayIn] = useState(true);
@@ -45,19 +67,32 @@ export default function LoginPage({ onAuth }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const setMode = (m) => { setModeRaw(m); setError(""); setPassword(""); setConfirm(""); setShowPw(false); };
+  const setMode = (m) => { setModeRaw(m); setResetStep("email"); setError(""); setPassword(""); setConfirm(""); setShowPw(false); };
+
+  const heads = mode === "reset"
+    ? (resetStep === "email"
+        ? ["Reset your password", "Enter your email and we'll send a reset link."]
+        : ["Set a new password", "Choose a new password for your account."])
+    : HEADS[mode];
+  const btnLabel = mode === "reset" ? (resetStep === "email" ? "Send reset link" : "Save and sign in") : BTN[mode];
 
   async function handleSubmit() {
     setError("");
     setBusy(true);
     try {
-      let user;
-      let isNew = false; // only a fresh account triggers the profile page
-      if (mode === "google") { user = await auth.continueWithGoogle({ displayName, stayIn }); isNew = !!user.isNew; }
-      else if (mode === "reset") user = await auth.resetPassword({ username, newPassword: password, confirm, stayIn });
-      else if (mode === "signup") { user = await auth.signUp({ username, displayName, password, stayIn }); isNew = true; }
-      else user = await auth.logIn({ username, password, stayIn });
-      onAuth(user, isNew);
+      if (mode === "google") { const u = await auth.continueWithGoogle({ displayName, stayIn }); onAuth(u, !!u.isNew); return; }
+      if (mode === "signup") { const u = await auth.signUp({ email, password, confirm, stayIn }); onAuth(u, true); return; }
+      if (mode === "reset") {
+        if (resetStep === "email") {
+          if (!auth.isEmail(email)) throw new Error("Enter a valid email address.");
+          if (!auth.accountExists(email)) throw new Error("No account found for that email.");
+          setResetStep("set"); setShowPw(false); setBusy(false); return;
+        }
+        const u = await auth.resetPassword({ email, newPassword: password, confirm, stayIn });
+        onAuth(u, false); return;
+      }
+      const u = await auth.logIn({ email, password, stayIn });
+      onAuth(u, false);
     } catch (e) {
       setError(e.message || "Something went wrong. Try again.");
       setBusy(false);
@@ -73,6 +108,7 @@ export default function LoginPage({ onAuth }) {
   const tapBtn = { minHeight: 48 };
   const linkBtn = { background: "none", border: "none", cursor: "pointer", fontFamily: font.ui, padding: 0, color: C.brassDeep };
   const isPw = mode === "login" || mode === "signup";
+  const showBack = mode === "google" || mode === "reset";
 
   const pwField = (value, set, ph, ac) => (
     <div style={{ position: "relative" }}>
@@ -83,6 +119,14 @@ export default function LoginPage({ onAuth }) {
           background: "none", border: "none", cursor: "pointer", color: C.faint }}>
         {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
       </button>
+    </div>
+  );
+
+  const emailField = (
+    <div>
+      <label style={label}>Email</label>
+      <input type="email" inputMode="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={onKey}
+        placeholder="you@email.com" style={field} />
     </div>
   );
 
@@ -105,7 +149,7 @@ export default function LoginPage({ onAuth }) {
               <span style={{ fontFamily: font.display, fontSize: 23, fontWeight: 500, color: C.paper, letterSpacing: "-0.01em", lineHeight: 1.1 }}>My Little Secret Diary</span>
             </div>
             <p style={{ fontFamily: font.body, fontStyle: "italic", fontSize: phone ? 15 : 17, color: "rgba(237,235,228,0.82)",
-              margin: phone ? "8px 0 0" : "16px 0 0", lineHeight: 1.5, maxWidth: 220 }}>
+              margin: phone ? "8px 0 0" : "16px 0 0", lineHeight: 1.5, maxWidth: 230 }}>
               A quiet page for each day.
             </p>
           </div>
@@ -117,15 +161,15 @@ export default function LoginPage({ onAuth }) {
 
         {/* Form */}
         <div style={{ flex: 1, minWidth: 0, padding: phone ? "24px 22px 26px" : "34px 34px" }}>
-          {(mode === "google" || mode === "reset") && (
+          {showBack && (
             <button onClick={() => setMode("login")}
               style={{ ...linkBtn, display: "inline-flex", alignItems: "center", gap: 4, color: C.inkSoft, fontSize: 14, marginBottom: 14, minHeight: 32 }}>
               <ChevronLeft size={15} /> Back to sign in
             </button>
           )}
 
-          <h1 style={{ fontFamily: font.display, fontSize: phone ? 24 : 27, fontWeight: 500, color: C.ink, margin: 0, letterSpacing: "-0.01em" }}>{HEADS[mode][0]}</h1>
-          <p style={{ fontFamily: font.body, fontSize: 15, color: C.inkSoft, margin: "6px 0 20px", lineHeight: 1.5 }}>{HEADS[mode][1]}</p>
+          <h1 style={{ fontFamily: font.display, fontSize: phone ? 24 : 27, fontWeight: 500, color: C.ink, margin: 0, letterSpacing: "-0.01em" }}>{heads[0]}</h1>
+          <p style={{ fontFamily: font.body, fontSize: 15, color: C.inkSoft, margin: "6px 0 20px", lineHeight: 1.5 }}>{heads[1]}</p>
 
           {isPw && (
             <div style={{ display: "flex", gap: 4, background: C.paper, borderRadius: 10, padding: 4, marginBottom: 20 }}>
@@ -146,43 +190,59 @@ export default function LoginPage({ onAuth }) {
                 <label style={label}>Your name</label>
                 <input autoFocus value={displayName} onChange={(e) => setDisplayName(e.target.value)} onKeyDown={onKey} placeholder="e.g. Sofia" style={field} />
               </div>
-            ) : (
+            ) : mode === "reset" && resetStep === "email" ? (
+              <>
+                {emailField}
+                <p style={{ fontFamily: font.body, fontStyle: "italic", color: C.faint, fontSize: 12.5, margin: 0, lineHeight: 1.5 }}>
+                  This local version stores everything in your browser, so it can't send email yet — you'll set a new password on the next step.
+                  Real emailed reset links arrive once your diary is connected to a backend.
+                </p>
+              </>
+            ) : mode === "reset" ? (
               <>
                 <div>
-                  <label style={label}>Username</label>
-                  <input value={username} onChange={(e) => setUsername(e.target.value)} onKeyDown={onKey} placeholder="quietpen" autoComplete="username" style={field} />
+                  <label style={label}>New password</label>
+                  {pwField(password, setPassword, "••••••••", "new-password")}
+                  <Strength pw={password} />
+                </div>
+                <div>
+                  <label style={label}>Confirm new password</label>
+                  <input type={showPw ? "text" : "password"} value={confirm} onChange={(e) => setConfirm(e.target.value)} onKeyDown={onKey} placeholder="••••••••" style={field} />
+                  {confirm && confirm !== password && <p style={{ fontFamily: font.ui, color: C.danger, fontSize: 12.5, margin: "7px 0 0" }}>Passwords don't match.</p>}
+                </div>
+              </>
+            ) : (
+              <>
+                {emailField}
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <label style={label}>Password</label>
+                    {mode === "login" && <button onClick={() => setMode("reset")} style={{ ...linkBtn, fontSize: 12.5, minHeight: 24 }}>Forgot your password?</button>}
+                  </div>
+                  {pwField(password, setPassword, mode === "signup" ? "At least 8 characters" : "••••••••", mode === "login" ? "current-password" : "new-password")}
+                  {mode === "signup" && <Strength pw={password} />}
                 </div>
                 {mode === "signup" && (
                   <div>
-                    <label style={label}>Name on your pages <span style={{ textTransform: "none", letterSpacing: 0 }}>(optional)</span></label>
-                    <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} onKeyDown={onKey} placeholder="Sofia" style={field} />
-                  </div>
-                )}
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <label style={label}>{mode === "reset" ? "New password" : "Password"}</label>
-                    {mode === "login" && <button onClick={() => setMode("reset")} style={{ ...linkBtn, fontSize: 12.5, minHeight: 24 }}>Forgot password?</button>}
-                  </div>
-                  {pwField(password, setPassword, "••••••••", mode === "login" ? "current-password" : "new-password")}
-                </div>
-                {mode === "reset" && (
-                  <div>
-                    <label style={label}>Confirm new password</label>
-                    <input type={showPw ? "text" : "password"} value={confirm} onChange={(e) => setConfirm(e.target.value)} onKeyDown={onKey} placeholder="••••••••" style={field} />
+                    <label style={label}>Confirm password</label>
+                    <input type={showPw ? "text" : "password"} value={confirm} onChange={(e) => setConfirm(e.target.value)} onKeyDown={onKey} placeholder="••••••••" autoComplete="new-password" style={field} />
+                    {confirm && confirm !== password && <p style={{ fontFamily: font.ui, color: C.danger, fontSize: 12.5, margin: "7px 0 0" }}>Passwords don't match.</p>}
                   </div>
                 )}
               </>
             )}
           </div>
 
-          <button type="button" onClick={() => setStayIn((v) => !v)}
-            style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 16, background: "none", border: "none", cursor: "pointer", padding: "4px 0" }}>
-            <span style={{ width: 20, height: 20, borderRadius: 6, border: `1px solid ${stayIn ? C.brass : C.line}`,
-              background: stayIn ? C.brass : C.page, display: "grid", placeItems: "center", flexShrink: 0 }}>
-              {stayIn && <Check size={14} color={C.page} />}
-            </span>
-            <span style={{ fontFamily: font.ui, fontSize: 14, color: C.inkSoft }}>Keep me signed in</span>
-          </button>
+          {(isPw || (mode === "reset" && resetStep === "set")) && (
+            <button type="button" onClick={() => setStayIn((v) => !v)}
+              style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 16, background: "none", border: "none", cursor: "pointer", padding: "4px 0" }}>
+              <span style={{ width: 20, height: 20, borderRadius: 6, border: `1px solid ${stayIn ? C.brass : C.line}`,
+                background: stayIn ? C.brass : C.page, display: "grid", placeItems: "center", flexShrink: 0 }}>
+                {stayIn && <Check size={14} color={C.page} />}
+              </span>
+              <span style={{ fontFamily: font.ui, fontSize: 14, color: C.inkSoft }}>Keep me signed in</span>
+            </button>
+          )}
 
           {error && <p style={{ fontFamily: font.body, color: C.danger, fontSize: 14, margin: "14px 0 0" }}>{error}</p>}
 
@@ -191,7 +251,8 @@ export default function LoginPage({ onAuth }) {
               background: C.ink, color: C.page, fontFamily: font.ui, fontSize: 16, fontWeight: 500,
               display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: busy ? 0.7 : 1 }}>
             {busy && <Loader2 size={16} className="spin" />}
-            {BTN[mode]}
+            {mode === "reset" && resetStep === "email" && !busy && <Mail size={16} />}
+            {btnLabel}
           </button>
 
           {isPw && (
@@ -207,12 +268,6 @@ export default function LoginPage({ onAuth }) {
                 <GoogleG /> Continue with Google
               </button>
             </>
-          )}
-
-          {mode === "reset" && (
-            <p style={{ fontFamily: font.body, fontStyle: "italic", color: C.faint, fontSize: 12.5, margin: "16px 0 0", lineHeight: 1.5 }}>
-              This local version has no email, so you reset it here. Real email recovery comes with a connected account.
-            </p>
           )}
         </div>
       </div>
