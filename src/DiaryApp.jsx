@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { BookOpen, Camera, X, LogOut, Menu, Check, Loader2 } from "lucide-react";
+import { BookOpen, Camera, X, LogOut, Menu, Check, Loader2, UserRound } from "lucide-react";
 import { C, font } from "./theme.js";
 
 /* ------------------------------------------------------------------ *
@@ -109,8 +109,14 @@ function pageBtn(active) {
   };
 }
 
+const sideBtn = {
+  minHeight: 46, padding: "0 14px", borderRadius: 10, border: `1px solid ${C.line}`,
+  background: "transparent", cursor: "pointer", color: C.inkSoft, fontFamily: ui, fontSize: 14.5,
+  display: "flex", alignItems: "center", gap: 8,
+};
+
 /* ============================ DIARY ============================ */
-export default function DiaryApp({ user, onLogout }) {
+export default function DiaryApp({ user, onLogout, onEditProfile }) {
   const vp = useViewport();
   const { phone, tablet, persistent } = vp;
   const [index, setIndex] = useState(null);
@@ -258,12 +264,14 @@ export default function DiaryApp({ user, onLogout }) {
         )}
       </div>
 
-      <button onClick={onLogout}
-        style={{ margin: 12, marginBottom: "max(12px, env(safe-area-inset-bottom))", minHeight: 46, padding: "0 14px",
-          borderRadius: 10, border: `1px solid ${C.line}`, background: "transparent", cursor: "pointer",
-          color: C.inkSoft, fontFamily: ui, fontSize: 14.5, display: "flex", alignItems: "center", gap: 8 }}>
-        <LogOut size={15} /> Close the diary
-      </button>
+      <div style={{ padding: 12, paddingBottom: "max(12px, env(safe-area-inset-bottom))", display: "flex", flexDirection: "column", gap: 8 }}>
+        <button onClick={() => { onEditProfile?.(); setDrawerOpen(false); }} style={sideBtn}>
+          <UserRound size={15} /> Edit profile
+        </button>
+        <button onClick={onLogout} style={sideBtn}>
+          <LogOut size={15} /> Close the diary
+        </button>
+      </div>
     </aside>
   );
 

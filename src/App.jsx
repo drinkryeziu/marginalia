@@ -7,7 +7,8 @@ import { hasProfile } from "./profile.js";
 
 export default function App() {
   const [user, setUser] = useState(null);
-  const [needsProfile, setNeedsProfile] = useState(false);
+  const [needsProfile, setNeedsProfile] = useState(false); // first-run onboarding
+  const [editingProfile, setEditingProfile] = useState(false); // reopened from the diary
   const [ready, setReady] = useState(false);
 
   // Restore an existing session (if "Keep me signed in" was checked).
@@ -27,7 +28,14 @@ export default function App() {
   if (!ready) return null;
   if (!user) return <LoginPage onAuth={handleAuth} />;
   if (needsProfile)
-    return <ProfileSetup user={user} onDone={(u) => { setUser(u); setNeedsProfile(false); }} />;
+    return <ProfileSetup user={user} mode="onboard" onDone={(u) => { setUser(u); setNeedsProfile(false); }} />;
+  if (editingProfile)
+    return <ProfileSetup user={user} mode="edit" onCancel={() => setEditingProfile(false)}
+      onDone={(u) => { setUser(u); setEditingProfile(false); }} />;
 
-  return <DiaryApp user={user} onLogout={() => { auth.logOut(); setUser(null); setNeedsProfile(false); }} />;
+  return (
+    <DiaryApp user={user}
+      onEditProfile={() => setEditingProfile(true)}
+      onLogout={() => { auth.logOut(); setUser(null); setNeedsProfile(false); setEditingProfile(false); }} />
+  );
 }

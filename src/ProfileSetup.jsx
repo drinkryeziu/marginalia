@@ -1,15 +1,14 @@
 import { useState, useEffect, useRef } from "react";
-import { Pencil, Loader2 } from "lucide-react";
+import { Pencil, Loader2, ChevronLeft, BookOpen, Lock } from "lucide-react";
 import { C, font } from "./theme.js";
 import * as auth from "./auth.js";
-import { saveProfile } from "./profile.js";
+import { saveProfile, getProfile } from "./profile.js";
 
-/* First-run onboarding — "Tell me about yourself".
-   Shown once, right after sign-up, before the diary opens. Every field is
-   optional; "Start My Diary" saves whatever's there and marks it done so the
-   page never reappears. */
-
-const script = "'Caveat', 'Fraunces', cursive";
+/* "Tell me about yourself" — same two-panel journal look as the login page.
+   Runs in two modes:
+     - "onboard": shown once, right after sign-up, before the diary opens.
+     - "edit":    reopened later from the diary to update details.
+   Every field is optional. */
 
 const GENDERS = [
   { key: "female", label: "Female", sym: "♀" },
@@ -21,10 +20,11 @@ const INTERESTS = [
   "Photography", "Writing", "Gardening", "Fashion", "Technology", "Cinema",
 ];
 
+/* Collapses the two-panel layout into a stacked one below 640px (like login). */
 function usePhone() {
-  const [p, setP] = useState(() => typeof window !== "undefined" && window.innerWidth < 560);
+  const [p, setP] = useState(() => typeof window !== "undefined" && window.innerWidth < 640);
   useEffect(() => {
-    const on = () => setP(window.innerWidth < 560);
+    const on = () => setP(window.innerWidth < 640);
     window.addEventListener("resize", on);
     return () => window.removeEventListener("resize", on);
   }, []);
@@ -53,21 +53,24 @@ function processAvatar(file) {
   });
 }
 
-export default function ProfileSetup({ user, onDone }) {
+export default function ProfileSetup({ user, onDone, onCancel, mode = "onboard" }) {
   const phone = usePhone();
-  const [gender, setGender] = useState("");
-  const [firstName, setFirstName] = useState(user.displayName || "");
-  const [lastName, setLastName] = useState("");
-  const [address, setAddress] = useState("");
-  const [phoneNo, setPhoneNo] = useState("");
-  const [email, setEmail] = useState("");
-  const [interests, setInterests] = useState([]);
-  const [about, setAbout] = useState("");
-  const [avatar, setAvatar] = useState(null);
+  const saved = getProfile(user.username) || {};
+
+  const [gender, setGender] = useState(saved.gender || "");
+  const [firstName, setFirstName] = useState(saved.firstName ?? (user.displayName || ""));
+  const [lastName, setLastName] = useState(saved.lastName || "");
+  const [address, setAddress] = useState(saved.address || "");
+  const [phoneNo, setPhoneNo] = useState(saved.phone || "");
+  const [email, setEmail] = useState(saved.email || "");
+  const [interests, setInterests] = useState(saved.interests || []);
+  const [about, setAbout] = useState(saved.about || "");
+  const [avatar, setAvatar] = useState(saved.avatar || null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const fileInput = useRef(null);
 
+  const editing = mode === "edit";
   const toggleInterest = (i) =>
     setInterests((cur) => (cur.includes(i) ? cur.filter((x) => x !== i) : [...cur, i]));
 
@@ -86,137 +89,166 @@ export default function ProfileSetup({ user, onDone }) {
     onDone(updated || user);
   }
 
-  /* styles */
-  const label = { fontFamily: font.ui, fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", color: C.inkSoft, marginBottom: 7, display: "block" };
+  /* styles — matched to LoginPage */
+  const label = { fontFamily: font.ui, fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", color: C.faint };
   const field = {
-    width: "100%", padding: "13px 14px", fontFamily: font.body, fontSize: 16, color: C.ink,
-    background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, outline: "none", WebkitAppearance: "none",
+    width: "100%", padding: "14px 14px", marginTop: 6, fontFamily: font.body, fontSize: 16, color: C.ink,
+    background: C.page, border: `1px solid ${C.line}`, borderRadius: 10, outline: "none", WebkitAppearance: "none",
   };
-  const cocoa = "#7B5836"; // warm brown accent from the mockup
+  const linkBtn = { background: "none", border: "none", cursor: "pointer", fontFamily: font.ui, padding: 0, color: C.inkSoft };
   const twoCol = { display: "grid", gridTemplateColumns: phone ? "1fr" : "1fr 1fr", gap: 16 };
 
   return (
-    <div style={{ minHeight: "100%", background: C.paper, display: "grid", placeItems: "start center",
-      padding: phone ? "20px 14px" : "40px 20px",
-      paddingTop: "max(20px, env(safe-area-inset-top))", paddingBottom: "max(28px, env(safe-area-inset-bottom))" }}>
-      <div className="rise" style={{ width: "100%", maxWidth: 500, background: C.page, border: `1px solid ${C.line}`,
-        borderRadius: 18, padding: phone ? "28px 22px 24px" : "38px 40px 32px",
-        boxShadow: "0 1px 0 #fff inset, 0 30px 60px -42px rgba(38,38,58,0.55)" }}>
+    <div style={{ minHeight: "100%", display: "grid", placeItems: "start center", padding: phone ? 16 : 24, background: C.paper,
+      paddingTop: "max(16px, env(safe-area-inset-top))", paddingBottom: "max(20px, env(safe-area-inset-bottom))" }}>
+      <div className="rise" style={{ width: "100%", maxWidth: phone ? 430 : 840, display: "flex", flexDirection: phone ? "column" : "row",
+        background: C.page, border: `1px solid ${C.line}`, borderRadius: 18, overflow: "hidden",
+        boxShadow: "0 1px 0 #fff inset, 0 30px 60px -40px rgba(38,38,58,0.55)" }}>
 
-        {/* Heading */}
-        <h1 style={{ fontFamily: script, fontSize: phone ? 34 : 40, fontWeight: 600, color: C.ink, margin: 0, lineHeight: 1.05 }}>
-          Tell me about yourself
-        </h1>
-        <p style={{ fontFamily: font.body, fontStyle: "italic", fontSize: 15.5, color: C.inkSoft, margin: "8px 0 0" }}>
-          Let us personalize your diary
-        </p>
-        <div style={{ height: 1, background: C.line, margin: "18px 0 24px" }} />
-
-        {/* Profile photo */}
-        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 26 }}>
-          <div style={{ position: "relative", flexShrink: 0 }}>
-            <div onClick={() => fileInput.current?.click()}
-              style={{ width: 66, height: 66, borderRadius: "50%", cursor: "pointer", overflow: "hidden",
-                background: avatar ? `center/cover no-repeat url(${avatar})` : "#E0CDB4",
-                border: `1px solid ${C.line}`, display: "grid", placeItems: "center",
-                color: cocoa, fontFamily: font.display, fontSize: 24 }}>
-              {!avatar && "?"}
+        {/* Cover — same journal cover as login */}
+        <div style={{ background: C.ink, color: C.paper, position: "relative", flexShrink: 0,
+          width: phone ? "auto" : 322, padding: phone ? "26px 24px" : "36px 30px",
+          display: "flex", flexDirection: "column", gap: phone ? 10 : 18, justifyContent: "flex-start" }}>
+          {!phone && <span style={{ position: "absolute", right: 34, top: -1, width: 12, height: 120, background: C.brass,
+            clipPath: "polygon(0 0,100% 0,100% 100%,50% 82%,0 100%)" }} />}
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 9, color: C.brass }}>
+              <BookOpen size={22} strokeWidth={1.7} />
+              <span style={{ fontFamily: font.display, fontSize: 23, fontWeight: 500, color: C.paper, letterSpacing: "-0.01em", lineHeight: 1.1 }}>My Little Secret Diary</span>
             </div>
-            <button type="button" onClick={() => fileInput.current?.click()} aria-label="Change profile photo"
-              style={{ position: "absolute", right: -2, bottom: -2, width: 26, height: 26, borderRadius: "50%",
-                border: `2px solid ${C.page}`, background: cocoa, color: "#fff", cursor: "pointer",
-                display: "grid", placeItems: "center" }}>
-              <Pencil size={12} />
+            <p style={{ fontFamily: font.body, fontStyle: "italic", fontSize: phone ? 15 : 17, color: "rgba(237,235,228,0.82)",
+              margin: phone ? "8px 0 0" : "16px 0 0", lineHeight: 1.5, maxWidth: 230 }}>
+              A few details, so each page feels like yours.
+            </p>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, color: "rgba(237,235,228,0.6)" }}>
+            <Lock size={13} />
+            <span style={{ fontFamily: font.ui, fontSize: 12 }}>Private by default.</span>
+          </div>
+        </div>
+
+        {/* Form */}
+        <div style={{ flex: 1, minWidth: 0, padding: phone ? "24px 22px 26px" : "34px 34px" }}>
+          {editing && (
+            <button onClick={onCancel}
+              style={{ ...linkBtn, display: "inline-flex", alignItems: "center", gap: 4, fontSize: 14, marginBottom: 14, minHeight: 32 }}>
+              <ChevronLeft size={15} /> Back to diary
             </button>
+          )}
+
+          <h1 style={{ fontFamily: font.display, fontSize: phone ? 25 : 28, fontWeight: 500, color: C.ink, margin: 0, letterSpacing: "-0.01em" }}>
+            {editing ? "Edit your details" : "Tell me about yourself"}
+          </h1>
+          <p style={{ fontFamily: font.body, fontSize: 15, color: C.inkSoft, margin: "6px 0 22px", lineHeight: 1.5 }}>
+            {editing ? "Update anything you like." : "Let us personalize your diary."}
+          </p>
+
+          {/* Profile photo */}
+          <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24 }}>
+            <div style={{ position: "relative", flexShrink: 0 }}>
+              <div onClick={() => fileInput.current?.click()}
+                style={{ width: 64, height: 64, borderRadius: "50%", cursor: "pointer", overflow: "hidden",
+                  background: avatar ? `center/cover no-repeat url(${avatar})` : C.paper,
+                  border: `1px solid ${C.line}`, display: "grid", placeItems: "center",
+                  color: C.brass, fontFamily: font.display, fontSize: 24 }}>
+                {!avatar && "?"}
+              </div>
+              <button type="button" onClick={() => fileInput.current?.click()} aria-label="Change profile photo"
+                style={{ position: "absolute", right: -2, bottom: -2, width: 26, height: 26, borderRadius: "50%",
+                  border: `2px solid ${C.page}`, background: C.brass, color: "#fff", cursor: "pointer",
+                  display: "grid", placeItems: "center" }}>
+                <Pencil size={12} />
+              </button>
+            </div>
+            <div>
+              <p style={{ fontFamily: font.display, fontSize: 17, fontWeight: 500, color: C.ink, margin: 0 }}>Profile photo</p>
+              <p style={{ fontFamily: font.body, fontStyle: "italic", fontSize: 13.5, color: C.faint, margin: "2px 0 0" }}>Tap the pencil to change</p>
+            </div>
+            <input ref={fileInput} type="file" accept="image/*" style={{ display: "none" }}
+              onChange={(e) => { onPhoto(e.target.files); e.target.value = ""; }} />
           </div>
+
+          {/* Gender */}
+          <div style={{ marginBottom: 20 }}>
+            <label style={label}>Gender</label>
+            <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+              {GENDERS.map((g) => {
+                const on = gender === g.key;
+                return (
+                  <button key={g.key} type="button" onClick={() => setGender(on ? "" : g.key)}
+                    style={{ flex: 1, minHeight: 46, borderRadius: 10, cursor: "pointer", fontFamily: font.ui, fontSize: 14.5, fontWeight: 500,
+                      background: on ? C.ink : C.page, color: on ? C.page : C.ink, border: `1px solid ${on ? C.ink : C.line}` }}>
+                    {g.sym}&nbsp; {g.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Names */}
+          <div style={{ ...twoCol, marginBottom: 20 }}>
+            <div>
+              <label style={label}>First name</label>
+              <input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First name" style={field} />
+            </div>
+            <div>
+              <label style={label}>Last name</label>
+              <input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Last name" style={field} />
+            </div>
+          </div>
+
+          {/* Address */}
+          <div style={{ marginBottom: 20 }}>
+            <label style={label}>Address</label>
+            <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Your address" style={field} />
+          </div>
+
+          {/* Phone + Email */}
+          <div style={{ ...twoCol, marginBottom: 20 }}>
+            <div>
+              <label style={label}>Phone</label>
+              <input type="tel" value={phoneNo} onChange={(e) => setPhoneNo(e.target.value)} placeholder="+1 234 567 8900" style={field} />
+            </div>
+            <div>
+              <label style={label}>Email</label>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" style={field} />
+            </div>
+          </div>
+
+          {/* Interests */}
+          <div style={{ marginBottom: 20 }}>
+            <label style={label}>Interests</label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 9, marginTop: 10 }}>
+              {INTERESTS.map((i) => {
+                const on = interests.includes(i);
+                return (
+                  <button key={i} type="button" onClick={() => toggleInterest(i)}
+                    style={{ padding: "8px 15px", borderRadius: 999, cursor: "pointer", fontFamily: font.ui, fontSize: 14,
+                      background: on ? C.ink : C.page, color: on ? C.page : C.ink, border: `1px solid ${on ? C.ink : C.line}` }}>
+                    {i}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* About me */}
           <div>
-            <p style={{ fontFamily: script, fontSize: 20, color: C.ink, margin: 0 }}>Profile Photo</p>
-            <p style={{ fontFamily: font.body, fontStyle: "italic", fontSize: 13.5, color: C.faint, margin: "2px 0 0" }}>Tap the pencil to change</p>
+            <label style={label}>About me</label>
+            <textarea value={about} onChange={(e) => setAbout(e.target.value)} placeholder="Write a little about yourself…" rows={4}
+              style={{ ...field, resize: "vertical", minHeight: 104, lineHeight: 1.6 }} />
           </div>
-          <input ref={fileInput} type="file" accept="image/*" style={{ display: "none" }}
-            onChange={(e) => { onPhoto(e.target.files); e.target.value = ""; }} />
+
+          {err && <p style={{ fontFamily: font.body, color: C.danger, fontSize: 14, margin: "14px 0 0" }}>{err}</p>}
+
+          <button onClick={submit} disabled={busy}
+            style={{ width: "100%", minHeight: 52, marginTop: 22, borderRadius: 10, border: "none", cursor: busy ? "default" : "pointer",
+              background: C.ink, color: C.page, fontFamily: font.ui, fontSize: 16, fontWeight: 500,
+              display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: busy ? 0.7 : 1 }}>
+            {busy && <Loader2 size={16} className="spin" />}
+            {editing ? "Save changes" : "Start My Diary"}
+          </button>
         </div>
-
-        {/* Gender */}
-        <div style={{ marginBottom: 22 }}>
-          <label style={label}>Gender</label>
-          <div style={{ display: "flex", gap: 10 }}>
-            {GENDERS.map((g) => {
-              const on = gender === g.key;
-              return (
-                <button key={g.key} type="button" onClick={() => setGender(on ? "" : g.key)}
-                  style={{ flex: 1, minHeight: 46, borderRadius: 10, cursor: "pointer", fontFamily: font.ui, fontSize: 14.5, fontWeight: 500,
-                    background: on ? cocoa : C.page, color: on ? "#fff" : C.ink, border: `1px solid ${on ? cocoa : C.line}` }}>
-                  {g.sym}&nbsp; {g.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Names */}
-        <div style={{ ...twoCol, marginBottom: 22 }}>
-          <div>
-            <label style={label}>First name</label>
-            <input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First name" style={field} />
-          </div>
-          <div>
-            <label style={label}>Last name</label>
-            <input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Last name" style={field} />
-          </div>
-        </div>
-
-        {/* Address */}
-        <div style={{ marginBottom: 22 }}>
-          <label style={label}>Address</label>
-          <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Your address" style={field} />
-        </div>
-
-        {/* Phone + Email */}
-        <div style={{ ...twoCol, marginBottom: 22 }}>
-          <div>
-            <label style={label}>Phone</label>
-            <input type="tel" value={phoneNo} onChange={(e) => setPhoneNo(e.target.value)} placeholder="+1 234 567 8900" style={field} />
-          </div>
-          <div>
-            <label style={label}>Email</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" style={field} />
-          </div>
-        </div>
-
-        {/* Interests */}
-        <div style={{ marginBottom: 22 }}>
-          <label style={label}>Interests</label>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 9 }}>
-            {INTERESTS.map((i) => {
-              const on = interests.includes(i);
-              return (
-                <button key={i} type="button" onClick={() => toggleInterest(i)}
-                  style={{ padding: "8px 15px", borderRadius: 999, cursor: "pointer", fontFamily: font.ui, fontSize: 14,
-                    background: on ? cocoa : C.page, color: on ? "#fff" : C.ink, border: `1px solid ${on ? cocoa : C.line}` }}>
-                  {i}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* About me */}
-        <div style={{ marginBottom: 8 }}>
-          <label style={label}>About me</label>
-          <textarea value={about} onChange={(e) => setAbout(e.target.value)} placeholder="Write a little about yourself…" rows={4}
-            style={{ ...field, resize: "vertical", minHeight: 104, lineHeight: 1.6 }} />
-        </div>
-
-        {err && <p style={{ fontFamily: font.body, color: C.danger, fontSize: 14, margin: "12px 0 0" }}>{err}</p>}
-
-        <button onClick={submit} disabled={busy}
-          style={{ width: "100%", minHeight: 52, marginTop: 22, borderRadius: 12, border: "none", cursor: busy ? "default" : "pointer",
-            background: cocoa, color: "#fff", fontFamily: font.ui, fontSize: 16.5, fontWeight: 600,
-            display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: busy ? 0.7 : 1 }}>
-          {busy && <Loader2 size={17} className="spin" />}
-          Start My Diary
-        </button>
       </div>
     </div>
   );
