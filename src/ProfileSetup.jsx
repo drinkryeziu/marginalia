@@ -66,7 +66,8 @@ export default function ProfileSetup({ user, onDone, onCancel, mode = "onboard" 
   const [birthDay, setBirthDay] = useState(saved.birthDay ? String(saved.birthDay) : "");
   const [address, setAddress] = useState(saved.address || "");
   const [phoneNo, setPhoneNo] = useState(saved.phone || "");
-  const [email, setEmail] = useState(saved.email || "");
+  const accountEmail = (user.username || "").includes("@") ? user.username : ""; // sign-in email
+  const [email, setEmail] = useState(saved.email || accountEmail);
   const [interests, setInterests] = useState(saved.interests || []);
   const [about, setAbout] = useState(saved.about || "");
   const [avatar, setAvatar] = useState(saved.avatar || null);
@@ -205,23 +206,6 @@ export default function ProfileSetup({ user, onDone, onCancel, mode = "onboard" 
             </div>
           </div>
 
-          {/* Birthday — month & day only, no year */}
-          <div style={{ marginBottom: 20 }}>
-            <label style={label}>Birthday <span style={{ textTransform: "none", letterSpacing: 0, color: C.faint }}>(month &amp; day)</span></label>
-            <div style={{ ...twoCol, marginTop: 8 }}>
-              <select value={birthMonth} onChange={(e) => setBirthMonth(e.target.value)}
-                style={{ ...field, cursor: "pointer", WebkitAppearance: "menulist", color: birthMonth ? C.ink : C.faint }}>
-                <option value="">Month</option>
-                {MONTHS.map((m, i) => <option key={m} value={i + 1} style={{ color: C.ink }}>{m}</option>)}
-              </select>
-              <select value={birthDay} onChange={(e) => setBirthDay(e.target.value)}
-                style={{ ...field, cursor: "pointer", WebkitAppearance: "menulist", color: birthDay ? C.ink : C.faint }}>
-                <option value="">Day</option>
-                {Array.from({ length: 31 }, (_, i) => <option key={i} value={i + 1} style={{ color: C.ink }}>{i + 1}</option>)}
-              </select>
-            </div>
-          </div>
-
           {/* Address */}
           <div style={{ marginBottom: 20 }}>
             <label style={label}>Address</label>
@@ -236,7 +220,10 @@ export default function ProfileSetup({ user, onDone, onCancel, mode = "onboard" 
             </div>
             <div>
               <label style={label}>Email</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" style={field} />
+              <input type="email" value={email} readOnly={!!accountEmail}
+                onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com"
+                style={{ ...field, ...(accountEmail ? { color: C.inkSoft, cursor: "default" } : null) }} />
+              {accountEmail && <p style={{ fontFamily: font.body, fontStyle: "italic", fontSize: 12, color: C.faint, margin: "6px 0 0" }}>Your sign-in email.</p>}
             </div>
           </div>
 
@@ -254,6 +241,23 @@ export default function ProfileSetup({ user, onDone, onCancel, mode = "onboard" 
                   </button>
                 );
               })}
+            </div>
+          </div>
+
+          {/* Birthday — month & day only, no year */}
+          <div style={{ marginBottom: 20 }}>
+            <label style={label}>Birthday <span style={{ textTransform: "none", letterSpacing: 0, color: C.faint }}>(month &amp; day)</span></label>
+            <div style={{ ...twoCol, marginTop: 8 }}>
+              <select value={birthMonth} onChange={(e) => setBirthMonth(e.target.value)}
+                style={{ ...field, cursor: "pointer", WebkitAppearance: "menulist", color: birthMonth ? C.ink : C.faint }}>
+                <option value="">Month</option>
+                {MONTHS.map((m, i) => <option key={m} value={i + 1} style={{ color: C.ink }}>{m}</option>)}
+              </select>
+              <select value={birthDay} onChange={(e) => setBirthDay(e.target.value)}
+                style={{ ...field, cursor: "pointer", WebkitAppearance: "menulist", color: birthDay ? C.ink : C.faint }}>
+                <option value="">Day</option>
+                {Array.from({ length: 31 }, (_, i) => <option key={i} value={i + 1} style={{ color: C.ink }}>{i + 1}</option>)}
+              </select>
             </div>
           </div>
 
