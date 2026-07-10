@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { BookOpen, Camera, X, LogOut, Menu, Check, Loader2, UserRound, ChevronLeft } from "lucide-react";
+import { BookOpen, Camera, X, LogOut, Menu, Check, Loader2, UserRound, ChevronLeft, ChevronRight } from "lucide-react";
 import { C, font } from "./theme.js";
 import { getProfile } from "./profile.js";
 import { loadIndex, loadEntry, saveEntry, deleteEntry } from "./db.js";
@@ -131,6 +131,64 @@ const primarySideBtn = {
   background: C.ink, cursor: "pointer", color: C.page, fontFamily: ui, fontSize: 15, fontWeight: 500,
   display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
 };
+
+/* Month calendar for the shelf — jump to any day. Days with an entry get a
+   brass dot; today gets a ring; the selected day is filled. */
+function Calendar({ selected, index, onPick }) {
+  const parse = (k) => { const [y, m] = k.split("-").map(Number); return { y, m: m - 1 }; };
+  const [ym, setYm] = useState(() => parse(selected));
+  useEffect(() => { setYm(parse(selected)); }, [selected]);
+
+  const first = new Date(ym.y, ym.m, 1);
+  const startDay = first.getDay();
+  const daysInMonth = new Date(ym.y, ym.m + 1, 0).getDate();
+  const label = first.toLocaleDateString(undefined, { month: "short", year: "numeric" });
+  const todayK = todayKey();
+  const has = new Set(index || []);
+  const key = (d) => `${ym.y}-${String(ym.m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const prev = () => setYm(({ y, m }) => (m === 0 ? { y: y - 1, m: 11 } : { y, m: m - 1 }));
+  const next = () => setYm(({ y, m }) => (m === 11 ? { y: y + 1, m: 0 } : { y, m: m + 1 }));
+
+  const cells = [];
+  for (let i = 0; i < startDay; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  const arrow = { width: 26, height: 26, display: "grid", placeItems: "center", background: "none", border: "none", cursor: "pointer", color: C.inkSoft, borderRadius: 6 };
+  const dow = { fontFamily: ui, fontSize: 10.5, color: C.faint, textAlign: "center", padding: "2px 0" };
+
+  return (
+    <div style={{ padding: "2px 2px 6px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 2px 6px" }}>
+        <button onClick={prev} aria-label="Previous month" style={arrow}><ChevronLeft size={16} /></button>
+        <span style={{ fontFamily: display, fontStyle: "italic", fontSize: 15, color: C.ink }}>{label}</span>
+        <button onClick={next} aria-label="Next month" style={arrow}><ChevronRight size={16} /></button>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)" }}>
+        {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((w) => <span key={w} style={dow}>{w}</span>)}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, marginTop: 2 }}>
+        {cells.map((d, i) => {
+          if (d === null) return <span key={"b" + i} />;
+          const k = key(d);
+          const sel = k === selected;
+          const today = k === todayK;
+          const entry = has.has(k);
+          return (
+            <button key={k} onClick={() => onPick(k)} aria-label={k}
+              style={{ position: "relative", aspectRatio: "1 / 1", minHeight: 30,
+                border: today && !sel ? `1px solid ${C.brass}` : "1px solid transparent", borderRadius: 8, cursor: "pointer",
+                fontFamily: body, fontSize: 13.5, fontWeight: entry || today ? 600 : 400,
+                background: sel ? "#7B5836" : "transparent", color: sel ? "#fff" : (entry ? C.ink : C.faint),
+                display: "grid", placeItems: "center" }}>
+              {d}
+              {entry && !sel && <span style={{ position: "absolute", bottom: 4, width: 4, height: 4, borderRadius: "50%", background: C.brass }} />}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 /* ============================ DIARY ============================ */
 export default function DiaryApp({ user, onLogout, onEditProfile }) {
@@ -311,21 +369,24 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
           <span style={{ fontFamily: body, fontSize: 12.5, color: isToday ? C.brassDeep : C.faint }}>{shortDate(todayKey())}</span>
         </button>
 
-        <p style={{ fontFamily: ui, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: C.faint, margin: "16px 8px 6px" }}>Earlier pages</p>
+        <p style={{ fontFamily: ui, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: C.faint, margin: "16px 8px 6px" }}>Recent</p>
         {index === null ? (
           <p style={{ fontFamily: body, fontSize: 13.5, color: C.faint, padding: "0 8px", fontStyle: "italic" }}>Opening the shelf…</p>
         ) : index.filter((d) => d !== todayKey()).length === 0 ? (
           <p style={{ fontFamily: body, fontSize: 13.5, color: C.faint, padding: "0 8px", fontStyle: "italic", lineHeight: 1.5 }}>
-            Nothing here yet. Each day you write becomes a page on this shelf.
+            Nothing here yet. Each day you write becomes a page — use the calendar below to revisit any day.
           </p>
         ) : (
-          index.filter((d) => d !== todayKey()).map((d) => (
+          index.filter((d) => d !== todayKey()).slice(0, 5).map((d) => (
             <button key={d} onClick={() => { setSelected(d); setDrawerOpen(false); }} style={pageBtn(selected === d)}>
               <span style={{ fontFamily: body, fontSize: 15 }}>{prettyDate(d).replace(/,\s\d{4}$/, "")}</span>
               <span style={{ fontFamily: body, fontSize: 12, color: C.faint }}>{d.slice(0, 4)}</span>
             </button>
           ))
         )}
+
+        <p style={{ fontFamily: ui, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: C.faint, margin: "18px 8px 4px" }}>Calendar</p>
+        <Calendar selected={selected} index={index} onPick={(d) => { setSelected(d); setDrawerOpen(false); }} />
       </div>
 
       <div style={{ padding: 12, paddingBottom: "max(12px, env(safe-area-inset-bottom))", display: "flex", flexDirection: "column", gap: 8 }}>
