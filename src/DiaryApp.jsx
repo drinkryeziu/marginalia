@@ -2,38 +2,14 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { BookOpen, Camera, X, LogOut, Menu, Check, Loader2, UserRound, ChevronLeft } from "lucide-react";
 import { C, font } from "./theme.js";
 import { getProfile } from "./profile.js";
+import { loadIndex, loadEntry, saveEntry, deleteEntry } from "./db.js";
 
 /* ------------------------------------------------------------------ *
- *  DiaryApp — the signed-in experience.
- *
- *  Ported from the diary.jsx prototype into the runnable Vite app.
- *  The prototype talked to a sandbox `window.storage` API; here it
- *  persists to localStorage, scoped per user (keys carry the username),
- *  so it lines up with src/auth.js. Swap `store` for your backend later
- *  and nothing above this file changes.
+ *  DiaryApp — the signed-in experience. Entries and photos are read and
+ *  written through src/db.js (Supabase), scoped to the signed-in user.
  * ------------------------------------------------------------------ */
 
 const { display, body, ui } = font;
-
-/* ------------------------------ storage ------------------------------ */
-const store = {
-  async get(key, fallback = null) {
-    try { const v = localStorage.getItem(key); return v != null ? JSON.parse(v) : fallback; }
-    catch { return fallback; }
-  },
-  async getRaw(key) {
-    try { return localStorage.getItem(key); } catch { return null; }
-  },
-  async set(key, value) {
-    try { localStorage.setItem(key, JSON.stringify(value)); return true; }
-    catch (e) { console.error("save failed", e); return false; }
-  },
-  async setRaw(key, value) {
-    try { localStorage.setItem(key, value); return true; }
-    catch (e) { console.error("save failed", e); return false; }
-  },
-  async del(key) { try { localStorage.removeItem(key); } catch {} },
-};
 
 /* -------- viewport tiers: phone | tablet(iPad) | desktop -------- */
 function useViewport() {
@@ -168,18 +144,15 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
   const [lightbox, setLightbox] = useState(null);
   const [uploadErr, setUploadErr] = useState("");
   const [loadingEntry, setLoadingEntry] = useState(true);
-  const [profile] = useState(() => getProfile(user.username)); // for the birthday greeting
+  const [profile, setProfile] = useState(null); // for the greeting + birthday
 
   const saveTimer = useRef(null);
   const savedTimer = useRef(null);
   const fileInput = useRef(null);
   const editorRef = useRef(null); // the rich-text entry (contentEditable)
 
-  const idxKey = `diary_index_${user.username}`;
-  const entryKey = (d) => `diary_entry_${user.username}_${d}`;
-  const photoKey = (id) => `diary_photo_${user.username}_${id}`;
-
-  useEffect(() => { (async () => setIndex(await store.get(idxKey, [])))(); }, [idxKey]);
+  useEffect(() => { let a = true; getProfile(user.id).then((p) => { if (a) setProfile(p); }); return () => { a = false; }; }, [user.id]);
+  useEffect(() => { (async () => setIndex(await loadIndex(user.id)))(); }, [user.id]);
   useEffect(() => { if (persistent) setDrawerOpen(false); }, [persistent]);
 
   // Hide a photo's Remove button when tapping anywhere else.
@@ -194,53 +167,48 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
     let alive = true;
     setLoadingEntry(true);
     (async () => {
-      const e = (await store.get(entryKey(selected))) || { text: "", photoIds: [] };
-      const loaded = {};
-      for (const id of e.photoIds || []) {
-        const raw = await store.getRaw(photoKey(id));
-        if (raw) loaded[id] = raw;
-      }
+      const e = await loadEntry(user.id, selected); // { html, text, photos:[{id,dataUrl}] }
       if (!alive) return;
-      // The editor is uncontrolled: set its HTML imperatively on load. Older
-      // entries only have plain `text`; render that safely via innerText.
+      const map = {}; const ids = [];
+      for (const p of e.photos || []) { if (p && p.id && p.dataUrl) { map[p.id] = p.dataUrl; ids.push(p.id); } }
+      // The editor is uncontrolled: set its HTML imperatively on load.
       const el = editorRef.current;
-      if (el) {
-        if (e.html != null) el.innerHTML = e.html;
-        else el.innerText = e.text || "";
-      }
-      setEntry({ text: e.text || "", html: el ? el.innerHTML : (e.html ?? ""), photoIds: e.photoIds || [] });
-      setPhotos(loaded);
+      if (el) el.innerHTML = e.html || "";
+      setEntry({ text: e.text || "", html: e.html || "", photoIds: ids });
+      setPhotos(map);
       setRevealRemove(null);
       setSaveState("idle");
       setLoadingEntry(false);
     })();
     return () => { alive = false; };
-  }, [selected, user.username]);
+  }, [selected, user.id]);
 
-  const persist = useCallback(async (next) => {
+  const persist = useCallback(async (next, photosArr) => {
     setSaveState("saving");
     const hasContent = next.text.trim() || next.photoIds.length;
-    if (hasContent) {
-      await store.set(entryKey(selected), { text: next.text, html: next.html, photoIds: next.photoIds, updatedAt: Date.now() });
-      setIndex((cur) => {
-        const list = cur || [];
-        if (list.includes(selected)) return list;
-        const merged = [...list, selected].sort((a, b) => (a < b ? 1 : -1));
-        store.set(idxKey, merged);
-        return merged;
-      });
-    } else {
-      await store.del(entryKey(selected));
-      setIndex((cur) => {
-        const list = (cur || []).filter((d) => d !== selected);
-        store.set(idxKey, list);
-        return list;
-      });
+    try {
+      if (hasContent) {
+        await saveEntry(user.id, selected, { html: next.html, text: next.text, photos: photosArr || [] });
+        setIndex((cur) => {
+          const list = cur || [];
+          return list.includes(selected) ? list : [...list, selected].sort((a, b) => (a < b ? 1 : -1));
+        });
+      } else {
+        await deleteEntry(user.id, selected);
+        setIndex((cur) => (cur || []).filter((d) => d !== selected));
+      }
+      setSaveState("saved");
+      clearTimeout(savedTimer.current);
+      savedTimer.current = setTimeout(() => setSaveState("idle"), 1600);
+    } catch (e) {
+      console.error("save entry", e);
+      setSaveState("idle");
+      setUploadErr("Couldn't save — check your connection and try again.");
     }
-    setSaveState("saved");
-    clearTimeout(savedTimer.current);
-    savedTimer.current = setTimeout(() => setSaveState("idle"), 1600);
-  }, [selected, idxKey]);
+  }, [selected, user.id]);
+
+  // Build the [{id,dataUrl}] array the DB stores, from the current photo ids + map.
+  const photoArr = (ids, map) => ids.map((id) => ({ id, dataUrl: map[id] })).filter((p) => p.dataUrl);
 
   // Read the contentEditable, mirror it into state, and debounce a save.
   const readEditor = () => {
@@ -250,8 +218,9 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
     if (el.innerText.replace(/ /g, " ").trim() === "") el.innerHTML = "";
     setEntry((cur) => {
       const next = { ...cur, text: el.innerText, html: el.innerHTML };
+      const arr = photoArr(next.photoIds, photos);
       clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => persist(next), 700);
+      saveTimer.current = setTimeout(() => persist(next, arr), 700);
       return next;
     });
   };
@@ -275,23 +244,20 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
       try {
         const dataUrl = await processImage(file);
         const id = "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-        const ok = await store.setRaw(photoKey(id), dataUrl);
-        if (!ok) { setUploadErr("That photo was too large to save. Try a smaller one."); continue; }
         additions[id] = dataUrl; ids.push(id);
       } catch (err) { setUploadErr(err.message || "Couldn't add that photo."); }
     }
     setPhotos(additions);
     const next = { ...entry, photoIds: ids };
-    setEntry(next); persist(next);
+    setEntry(next); persist(next, photoArr(ids, additions));
   }
 
   async function removePhoto(id) {
-    await store.del(photoKey(id));
     const ids = entry.photoIds.filter((x) => x !== id);
     const p = { ...photos }; delete p[id];
     setPhotos(p);
     const next = { ...entry, photoIds: ids };
-    setEntry(next); persist(next); setLightbox(null); setRevealRemove(null);
+    setEntry(next); persist(next, photoArr(ids, p)); setLightbox(null); setRevealRemove(null);
   }
 
   const isToday = selected === todayKey();
@@ -301,6 +267,7 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
   // Birthday: does the selected day's month/day match the profile's birthday?
   const isBirthday = !!(profile?.birthMonth && profile?.birthDay) &&
     selected.slice(5) === `${String(profile.birthMonth).padStart(2, "0")}-${String(profile.birthDay).padStart(2, "0")}`;
+  const greetName = (profile?.firstName || user.displayName || "").trim();
 
   const sidebarW = phone ? "82vw" : tablet ? 248 : 264;
 
@@ -325,7 +292,7 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
             </button>
           )}
         </div>
-        <p style={{ fontFamily: body, fontSize: 13.5, color: C.inkSoft, margin: "10px 0 0" }}>{user.displayName}</p>
+        <p style={{ fontFamily: body, fontSize: 13.5, color: C.inkSoft, margin: "10px 0 0" }}>{greetName || user.email}</p>
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "10px 12px" }}>
@@ -418,7 +385,7 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
               <div className="welcome" style={{ marginBottom: 20 }}>
                 <p style={{ fontFamily: ui, fontSize: 12.5, letterSpacing: "0.12em", textTransform: "uppercase", color: C.brass, margin: 0 }}>{prettyDate(selected)}</p>
                 <h1 style={{ fontFamily: display, fontSize: welcomeSize, fontWeight: 500, color: C.ink, margin: "12px 0 6px", lineHeight: 1.15, letterSpacing: "-0.015em" }}>
-                  {isBirthday ? `Happy Birthday, ${user.displayName}! 🎉` : `${greeting()}, ${user.displayName}.`}
+                  {isBirthday ? `Happy Birthday, ${greetName}! 🎉` : `${greeting()}, ${greetName}.`}
                 </h1>
                 <p style={{ fontFamily: body, fontStyle: "italic", fontSize: phone ? 16 : 17, color: C.inkSoft, margin: 0 }}>A fresh page. Begin wherever you like.</p>
                 <div style={{ height: 1, background: C.line, margin: "24px 0 0" }} />
@@ -426,7 +393,7 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
             ) : (
               <div style={{ marginBottom: 18 }}>
                 <p style={{ fontFamily: ui, fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase", color: C.brass, margin: 0 }}>
-                  {isBirthday ? `🎉 Happy Birthday, ${user.displayName}!` : (isToday ? "Today" : "On this day")}
+                  {isBirthday ? `🎉 Happy Birthday, ${greetName}!` : (isToday ? "Today" : "On this day")}
                 </p>
                 <h1 style={{ fontFamily: display, fontSize: dateSize, fontWeight: 500, color: C.ink, margin: "7px 0 0", letterSpacing: "-0.01em", lineHeight: 1.2 }}>{prettyDate(selected)}</h1>
                 <div style={{ height: 1, background: C.line, margin: "20px 0 0" }} />

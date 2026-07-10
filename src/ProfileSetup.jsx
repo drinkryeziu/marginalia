@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Pencil, Loader2, ChevronLeft, BookOpen, Lock } from "lucide-react";
 import { C, font } from "./theme.js";
-import * as auth from "./auth.js";
 import { saveProfile, getProfile } from "./profile.js";
 
 /* "Tell me about yourself" — same two-panel journal look as the login page.
@@ -57,25 +56,46 @@ function processAvatar(file) {
 
 export default function ProfileSetup({ user, onDone, onCancel, mode = "onboard" }) {
   const phone = usePhone();
-  const saved = getProfile(user.username) || {};
+  const accountEmail = (user.email || "").includes("@") ? user.email : ""; // sign-in email
 
-  const [gender, setGender] = useState(saved.gender || "");
-  const [firstName, setFirstName] = useState(saved.firstName ?? (user.displayName || ""));
-  const [lastName, setLastName] = useState(saved.lastName || "");
-  const [birthMonth, setBirthMonth] = useState(saved.birthMonth ? String(saved.birthMonth) : "");
-  const [birthDay, setBirthDay] = useState(saved.birthDay ? String(saved.birthDay) : "");
-  const [address, setAddress] = useState(saved.address || "");
-  const [phoneNo, setPhoneNo] = useState(saved.phone || "");
-  const accountEmail = (user.username || "").includes("@") ? user.username : ""; // sign-in email
-  const [email, setEmail] = useState(saved.email || accountEmail);
-  const [interests, setInterests] = useState(saved.interests || []);
-  const [about, setAbout] = useState(saved.about || "");
-  const [avatar, setAvatar] = useState(saved.avatar || null);
+  const [gender, setGender] = useState("");
+  const [firstName, setFirstName] = useState(user.displayName || "");
+  const [lastName, setLastName] = useState("");
+  const [birthMonth, setBirthMonth] = useState("");
+  const [birthDay, setBirthDay] = useState("");
+  const [address, setAddress] = useState("");
+  const [phoneNo, setPhoneNo] = useState("");
+  const [email, setEmail] = useState(accountEmail);
+  const [interests, setInterests] = useState([]);
+  const [about, setAbout] = useState("");
+  const [avatar, setAvatar] = useState(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const fileInput = useRef(null);
 
   const editing = mode === "edit";
+
+  // Load any saved profile from Supabase and prefill the form.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const saved = await getProfile(user.id);
+      if (!alive || !saved) return;
+      setGender(saved.gender || "");
+      if (saved.firstName) setFirstName(saved.firstName);
+      setLastName(saved.lastName || "");
+      setBirthMonth(saved.birthMonth ? String(saved.birthMonth) : "");
+      setBirthDay(saved.birthDay ? String(saved.birthDay) : "");
+      setAddress(saved.address || "");
+      setPhoneNo(saved.phone || "");
+      if (saved.email) setEmail(saved.email);
+      setInterests(saved.interests || []);
+      setAbout(saved.about || "");
+      setAvatar(saved.avatar || null);
+    })();
+    return () => { alive = false; };
+  }, [user.id]);
+
   const toggleInterest = (i) =>
     setInterests((cur) => (cur.includes(i) ? cur.filter((x) => x !== i) : [...cur, i]));
 
@@ -87,15 +107,20 @@ export default function ProfileSetup({ user, onDone, onCancel, mode = "onboard" 
     catch (e) { setErr(e.message || "Couldn't use that photo."); }
   }
 
-  function submit() {
+  async function submit() {
     setBusy(true);
-    saveProfile(user.username, {
-      gender, firstName, lastName, address, phone: phoneNo, email, interests, about, avatar,
-      birthMonth: birthMonth ? Number(birthMonth) : null,
-      birthDay: birthDay ? Number(birthDay) : null,
-    });
-    const updated = firstName.trim() ? auth.updateDisplayName(user.username, firstName.trim()) : user;
-    onDone(updated || user);
+    setErr("");
+    try {
+      await saveProfile(user.id, {
+        gender, firstName, lastName, address, phone: phoneNo, email, interests, about, avatar,
+        birthMonth: birthMonth ? Number(birthMonth) : null,
+        birthDay: birthDay ? Number(birthDay) : null,
+      });
+      onDone();
+    } catch (e) {
+      setErr(e.message || "Couldn't save your profile. Try again.");
+      setBusy(false);
+    }
   }
 
   /* styles — matched to LoginPage */
