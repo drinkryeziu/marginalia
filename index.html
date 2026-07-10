@@ -3,6 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- Content-Security-Policy: only our own scripts run; network calls limited to
+         Supabase; no plugins/inline scripts. Backstops any XSS. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://ejzzeuhhkmuooswabwzm.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'" />
     <title>My Little Secret Diary</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

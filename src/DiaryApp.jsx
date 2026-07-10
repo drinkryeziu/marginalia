@@ -13,6 +13,26 @@ const { display, body, ui } = font;
 
 const MAX_PHOTOS = 5; // photos allowed per day
 
+// Strip diary HTML down to safe formatting only: keep bold/italic/line-breaks,
+// drop every attribute (on*, style, src, href…) and any other tag. Prevents
+// stored/pasted markup from running script in the diary's origin.
+const ALLOWED_TAGS = new Set(["B", "STRONG", "I", "EM", "U", "BR", "DIV", "P", "SPAN"]);
+function sanitizeHtml(html) {
+  if (!html) return "";
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const walk = (node) => {
+    [...node.childNodes].forEach((child) => {
+      if (child.nodeType === 1) {
+        if (!ALLOWED_TAGS.has(child.tagName)) { child.replaceWith(document.createTextNode(child.textContent || "")); return; }
+        [...child.attributes].forEach((a) => child.removeAttribute(a.name));
+        walk(child);
+      } else if (child.nodeType === 8) { child.remove(); } // comments
+    });
+  };
+  walk(doc.body);
+  return doc.body.innerHTML;
+}
+
 /* -------- viewport tiers: phone | tablet(iPad) | desktop -------- */
 function useViewport() {
   const get = () => (typeof window !== "undefined" ? window.innerWidth : 1024);
@@ -237,8 +257,9 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
       for (const p of e.photos || []) { if (p && p.id && p.dataUrl) { map[p.id] = p.dataUrl; ids.push(p.id); } }
       // The editor is uncontrolled: set its HTML imperatively on load.
       const el = editorRef.current;
-      if (el) el.innerHTML = e.html || "";
-      setEntry({ text: e.text || "", html: e.html || "", photoIds: ids });
+      const safe = sanitizeHtml(e.html || "");
+      if (el) el.innerHTML = safe;
+      setEntry({ text: e.text || "", html: safe, photoIds: ids });
       setPhotos(map);
       setRevealRemove(null);
       setSaveState("idle");
@@ -252,7 +273,7 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
     const hasContent = next.text.trim() || next.photoIds.length;
     try {
       if (hasContent) {
-        await saveEntry(user.id, selected, { html: next.html, text: next.text, photos: photosArr || [] });
+        await saveEntry(user.id, selected, { html: sanitizeHtml(next.html), text: next.text, photos: photosArr || [] });
         setIndex((cur) => {
           const list = cur || [];
           return list.includes(selected) ? list : [...list, selected].sort((a, b) => (a < b ? 1 : -1));
@@ -295,9 +316,18 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
     const k = e.key.toLowerCase();
     if (k === "b" || k === "i") {
       e.preventDefault();
+      try { document.execCommand("styleWithCSS", false, false); } catch {} // produce <b>/<i>, not styled spans
       document.execCommand(k === "b" ? "bold" : "italic");
       readEditor();
     }
+  };
+
+  // Paste as plain text only — never let pasted markup into the entry.
+  const onEditorPaste = (e) => {
+    e.preventDefault();
+    const text = (e.clipboardData || window.clipboardData)?.getData("text/plain") || "";
+    document.execCommand("insertText", false, text);
+    readEditor();
   };
 
   async function addPhotos(files) {
@@ -540,7 +570,7 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
             <div ref={editorRef} className="entry-editor" contentEditable suppressContentEditableWarning
               role="textbox" aria-multiline="true" spellCheck
               data-placeholder={showWelcome ? "Dear diary…" : "Continue the day…"}
-              onInput={readEditor} onKeyDown={onEditorKeyDown}
+              onInput={readEditor} onKeyDown={onEditorKeyDown} onPaste={onEditorPaste}
               style={{ flex: 1, width: "100%", minHeight: phone ? 200 : 240, border: "none", outline: "none",
                 background: "transparent", color: C.ink, fontFamily: body, fontSize: textSize, lineHeight: 1.85,
                 whiteSpace: "pre-wrap", overflowWrap: "anywhere" }} />
