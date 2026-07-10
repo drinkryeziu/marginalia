@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { BookOpen, Camera, X, LogOut, Menu, Check, Loader2, UserRound, ChevronLeft, ChevronRight } from "lucide-react";
+import { BookOpen, Camera, X, LogOut, Menu, Check, Loader2, UserRound, ChevronLeft, ChevronRight, Mic } from "lucide-react";
 import { C, font } from "./theme.js";
 import { getProfile } from "./profile.js";
 import { loadIndex, loadEntry, saveEntry, deleteEntry } from "./db.js";
@@ -205,11 +205,15 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
   const [uploadErr, setUploadErr] = useState("");
   const [loadingEntry, setLoadingEntry] = useState(true);
   const [profile, setProfile] = useState(null); // for the greeting + birthday
+  const [recording, setRecording] = useState(false); // speech-to-text active
 
   const saveTimer = useRef(null);
   const savedTimer = useRef(null);
   const fileInput = useRef(null);
   const editorRef = useRef(null); // the rich-text entry (contentEditable)
+  const recognitionRef = useRef(null); // Web Speech API instance
+
+  const speechSupported = typeof window !== "undefined" && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 
   useEffect(() => { let a = true; getProfile(user.id).then((p) => { if (a) setProfile(p); }); return () => { a = false; }; }, [user.id]);
   useEffect(() => { (async () => setIndex(await loadIndex(user.id)))(); }, [user.id]);
@@ -328,6 +332,50 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
     setEntry(next); persist(next, photoArr(ids, p)); setLightbox(null); setRevealRemove(null);
   }
 
+  // Insert dictated text at the end of the entry, then save.
+  function insertDictation(text) {
+    const el = editorRef.current;
+    if (!el) return;
+    el.focus();
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false); // caret to end
+    sel.removeAllRanges(); sel.addRange(range);
+    document.execCommand("insertText", false, text);
+    readEditor();
+  }
+
+  // Toggle voice dictation (Web Speech API — runs in the browser).
+  function toggleMic() {
+    if (recording) { recognitionRef.current?.stop(); return; }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { setUploadErr("Voice input isn't supported in this browser."); return; }
+    const rec = new SR();
+    rec.lang = navigator.language || "en-US";
+    rec.continuous = true;
+    rec.interimResults = false;
+    rec.onresult = (e) => {
+      let text = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) text += e.results[i][0].transcript;
+      if (text.trim()) insertDictation(text.trim() + " ");
+    };
+    rec.onerror = (ev) => {
+      if (ev.error === "not-allowed" || ev.error === "service-not-allowed")
+        setUploadErr("Microphone access is blocked. Allow it in your browser to dictate.");
+      else if (ev.error !== "aborted" && ev.error !== "no-speech")
+        setUploadErr("Voice input error: " + ev.error);
+    };
+    rec.onend = () => { setRecording(false); recognitionRef.current = null; };
+    recognitionRef.current = rec;
+    setUploadErr("");
+    try { rec.start(); setRecording(true); } catch { /* already started */ }
+  }
+
+  // Stop dictation when leaving the day or unmounting.
+  useEffect(() => () => { try { recognitionRef.current?.stop(); } catch {} }, []);
+  useEffect(() => { recognitionRef.current?.stop(); }, [selected]);
+
   const isToday = selected === todayKey();
   const isBlank = !entry.text.trim() && entry.photoIds.length === 0;
   const showWelcome = isToday && isBlank && !loadingEntry;
@@ -431,19 +479,34 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
               </button>
             )}
             <div style={{ fontFamily: ui, fontSize: 13, color: C.faint, minHeight: 18 }}>
-              {saveState === "saving" && <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Loader2 size={13} className="spin" /> Saving…</span>}
-              {saveState === "saved" && <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: C.brassDeep }}><Check size={14} /> Saved</span>}
+              {recording ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: C.danger }}><Mic size={13} /> Listening…</span>
+              ) : (<>
+                {saveState === "saving" && <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Loader2 size={13} className="spin" /> Saving…</span>}
+                {saveState === "saved" && <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: C.brassDeep }}><Check size={14} /> Saved</span>}
+              </>)}
             </div>
           </div>
-          {(() => { const full = entry.photoIds.length >= MAX_PHOTOS; return (
-          <button onClick={() => fileInput.current?.click()} disabled={full}
-            title={full ? `Up to ${MAX_PHOTOS} photos per day` : "Add photo"}
-            style={{ height: 44, padding: phone ? "0 12px" : "0 16px", borderRadius: 10, border: `1px solid ${C.line}`,
-              background: C.page, cursor: full ? "default" : "pointer", color: C.ink, fontFamily: ui, fontSize: 14.5, fontWeight: 500,
-              display: "inline-flex", alignItems: "center", gap: 7, flexShrink: 0, opacity: full ? 0.5 : 1 }}>
-            <Camera size={18} /> {!phone && (full ? `${MAX_PHOTOS}/${MAX_PHOTOS} photos` : "Add photo")}
-          </button>
-          ); })()}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            {speechSupported && (
+              <button onClick={toggleMic} aria-label={recording ? "Stop dictation" : "Dictate with your voice"}
+                title={recording ? "Stop dictation" : "Dictate"} className={recording ? "mic-pulse" : ""}
+                style={{ width: 44, height: 44, borderRadius: "50%", flexShrink: 0, cursor: "pointer",
+                  border: `1px solid ${recording ? C.danger : C.line}`, background: recording ? C.danger : C.page,
+                  color: recording ? "#fff" : C.ink, display: "grid", placeItems: "center" }}>
+                <Mic size={18} />
+              </button>
+            )}
+            {(() => { const full = entry.photoIds.length >= MAX_PHOTOS; return (
+            <button onClick={() => fileInput.current?.click()} disabled={full}
+              title={full ? `Up to ${MAX_PHOTOS} photos per day` : "Add photo"}
+              style={{ height: 44, padding: phone ? "0 12px" : "0 16px", borderRadius: 10, border: `1px solid ${C.line}`,
+                background: C.page, cursor: full ? "default" : "pointer", color: C.ink, fontFamily: ui, fontSize: 14.5, fontWeight: 500,
+                display: "inline-flex", alignItems: "center", gap: 7, flexShrink: 0, opacity: full ? 0.5 : 1 }}>
+              <Camera size={18} /> {!phone && (full ? `${MAX_PHOTOS}/${MAX_PHOTOS} photos` : "Add photo")}
+            </button>
+            ); })()}
+          </div>
           <input ref={fileInput} type="file" accept="image/*" multiple style={{ display: "none" }}
             onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }} />
         </header>

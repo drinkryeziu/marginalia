@@ -28,7 +28,9 @@
       .welcome { animation: welcome-rise 0.6s cubic-bezier(0.2,0.7,0.2,1) both; }
       @keyframes drawer-slide { from { transform: translateX(-100%); } to { transform: none; } }
       .drawer { animation: drawer-slide 0.28s cubic-bezier(0.2,0.7,0.2,1) both; }
-      @media (prefers-reduced-motion: reduce) { .spin, .rise, .welcome, .drawer { animation: none !important; } }
+      @keyframes mic-pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(158,75,69,0.5); } 50% { box-shadow: 0 0 0 7px rgba(158,75,69,0); } }
+      .mic-pulse { animation: mic-pulse 1.3s ease-in-out infinite; }
+      @media (prefers-reduced-motion: reduce) { .spin, .rise, .welcome, .drawer, .mic-pulse { animation: none !important; } }
     </style>
   </head>
   <body>
