@@ -27,8 +27,9 @@ jobs:
         with:
           node-version: 20
       - run: npm install
-      # Project Pages live under /<repo>/, so assets need that base path.
-      - run: npm run build -- --base=/marginalia/
+      # Served from the custom domain root (mylittlesecretdiary.com), so the
+      # default base "/" is correct. (public/CNAME carries the domain.)
+      - run: npm run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
