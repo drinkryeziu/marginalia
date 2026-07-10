@@ -11,6 +11,8 @@ import { loadIndex, loadEntry, saveEntry, deleteEntry } from "./db.js";
 
 const { display, body, ui } = font;
 
+const MAX_PHOTOS = 5; // photos allowed per day
+
 /* -------- viewport tiers: phone | tablet(iPad) | desktop -------- */
 function useViewport() {
   const get = () => (typeof window !== "undefined" ? window.innerWidth : 1024);
@@ -238,9 +240,16 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
 
   async function addPhotos(files) {
     setUploadErr("");
+    const current = entry.photoIds.length;
+    if (current >= MAX_PHOTOS) {
+      setUploadErr(`You can add up to ${MAX_PHOTOS} photos per day.`);
+      return;
+    }
+    const picked = Array.from(files);
+    const allowed = picked.slice(0, MAX_PHOTOS - current); // only fill the remaining slots
     const additions = { ...photos };
     let ids = [...entry.photoIds];
-    for (const file of Array.from(files)) {
+    for (const file of allowed) {
       try {
         const dataUrl = await processImage(file);
         const id = "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -250,6 +259,7 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
     setPhotos(additions);
     const next = { ...entry, photoIds: ids };
     setEntry(next); persist(next, photoArr(ids, additions));
+    if (picked.length > allowed.length) setUploadErr(`Only ${MAX_PHOTOS} photos per day — the rest weren't added.`);
   }
 
   async function removePhoto(id) {
@@ -364,12 +374,15 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
               {saveState === "saved" && <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: C.brassDeep }}><Check size={14} /> Saved</span>}
             </div>
           </div>
-          <button onClick={() => fileInput.current?.click()}
+          {(() => { const full = entry.photoIds.length >= MAX_PHOTOS; return (
+          <button onClick={() => fileInput.current?.click()} disabled={full}
+            title={full ? `Up to ${MAX_PHOTOS} photos per day` : "Add photo"}
             style={{ height: 44, padding: phone ? "0 12px" : "0 16px", borderRadius: 10, border: `1px solid ${C.line}`,
-              background: C.page, cursor: "pointer", color: C.ink, fontFamily: ui, fontSize: 14.5, fontWeight: 500,
-              display: "inline-flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
-            <Camera size={18} /> {!phone && "Add photo"}
+              background: C.page, cursor: full ? "default" : "pointer", color: C.ink, fontFamily: ui, fontSize: 14.5, fontWeight: 500,
+              display: "inline-flex", alignItems: "center", gap: 7, flexShrink: 0, opacity: full ? 0.5 : 1 }}>
+            <Camera size={18} /> {!phone && (full ? `${MAX_PHOTOS}/${MAX_PHOTOS} photos` : "Add photo")}
           </button>
+          ); })()}
           <input ref={fileInput} type="file" accept="image/*" multiple style={{ display: "none" }}
             onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }} />
         </header>
