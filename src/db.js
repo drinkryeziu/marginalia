@@ -68,3 +68,11 @@ export async function deleteEntry(userId, day) {
   const { error } = await supabase.from("entries").delete().eq("user_id", userId).eq("day", day);
   if (error) console.error("deleteEntry", error);
 }
+
+// Every entry (oldest first) for exporting/backing up the whole diary.
+export async function loadAllEntries(userId) {
+  const { data, error } = await supabase.from("entries")
+    .select("day, html, content, photos").eq("user_id", userId).order("day", { ascending: true });
+  if (error) { console.error("loadAllEntries", error); throw new Error(error.message); }
+  return data || [];
+}

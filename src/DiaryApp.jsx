@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { BookOpen, Camera, X, LogOut, Menu, Check, Loader2, UserRound, ChevronLeft, ChevronRight, Mic } from "lucide-react";
+import { BookOpen, Camera, X, LogOut, Menu, Check, Loader2, UserRound, ChevronLeft, ChevronRight, Mic, Share2, Download } from "lucide-react";
 import { C, font } from "./theme.js";
 import { getProfile } from "./profile.js";
-import { loadIndex, loadEntry, saveEntry, deleteEntry } from "./db.js";
+import { loadIndex, loadEntry, saveEntry, deleteEntry, loadAllEntries } from "./db.js";
 
 /* ------------------------------------------------------------------ *
  *  DiaryApp — the signed-in experience. Entries and photos are read and
@@ -31,6 +31,41 @@ function sanitizeHtml(html) {
   };
   walk(doc.body);
   return doc.body.innerHTML;
+}
+
+const escapeText = (s) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+// A self-contained, printable HTML document of the whole diary (text + photos
+// inlined). Entry HTML is re-sanitized so the exported file can never run script.
+function buildExportHtml(entries, name) {
+  const articles = entries.map((e) => {
+    const body = sanitizeHtml(e.html || "") || escapeText(e.content || "").replace(/\n/g, "<br>");
+    const photos = (e.photos || []).filter((p) => p && p.dataUrl)
+      .map((p) => `<img src="${p.dataUrl}" alt="" />`).join("");
+    return `<article><h2>${escapeText(prettyDate(e.day))}</h2><div class="body">${body}</div>${photos ? `<div class="photos">${photos}</div>` : ""}</article>`;
+  }).join("\n");
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My Little Secret Diary${name ? " — " + escapeText(name) : ""}</title>
+<style>
+  :root { --paper:#EDEBE4; --page:#F6F5F0; --ink:#26263A; --soft:#5B5B70; --brass:#A5873F; --line:#DEDBD1; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia, 'Times New Roman', serif; line-height:1.7; padding:40px 16px; }
+  .wrap { max-width:720px; margin:0 auto; }
+  header { text-align:center; margin-bottom:40px; }
+  header h1 { font-size:34px; margin:0 0 6px; letter-spacing:-0.01em; }
+  header p { color:var(--soft); font-style:italic; margin:0; }
+  article { background:var(--page); border:1px solid var(--line); border-radius:14px; padding:26px 28px; margin:0 0 20px; }
+  article h2 { font-size:20px; color:var(--brass); margin:0 0 12px; }
+  .body { white-space:pre-wrap; word-break:break-word; }
+  .photos { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; margin-top:18px; }
+  .photos img { width:100%; height:auto; border-radius:10px; display:block; }
+  @media print { body { background:#fff; padding:0; } article { break-inside:avoid; border:none; } }
+</style></head>
+<body><div class="wrap">
+<header><h1>My Little Secret Diary</h1><p>${escapeText(name || "")}${name ? " · " : ""}exported ${escapeText(prettyDate(todayKey()))}</p></header>
+${articles || "<p style='text-align:center;color:var(--soft)'>No entries yet.</p>"}
+</div></body></html>`;
 }
 
 /* -------- viewport tiers: phone | tablet(iPad) | desktop -------- */
@@ -226,12 +261,15 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
   const [loadingEntry, setLoadingEntry] = useState(true);
   const [profile, setProfile] = useState(null); // for the greeting + birthday
   const [recording, setRecording] = useState(false); // speech-to-text active
+  const [exporting, setExporting] = useState(false);
+  const [toast, setToast] = useState("");
 
   const saveTimer = useRef(null);
   const savedTimer = useRef(null);
   const fileInput = useRef(null);
   const editorRef = useRef(null); // the rich-text entry (contentEditable)
   const recognitionRef = useRef(null); // Web Speech API instance
+  const flashTimer = useRef(null);
 
   const speechSupported = typeof window !== "undefined" && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 
@@ -406,6 +444,36 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
   useEffect(() => () => { try { recognitionRef.current?.stop(); } catch {} }, []);
   useEffect(() => { recognitionRef.current?.stop(); }, [selected]);
 
+  const flash = (m) => { setToast(m); clearTimeout(flashTimer.current); flashTimer.current = setTimeout(() => setToast(""), 2400); };
+
+  // Share the current day via the device's native share sheet (or clipboard).
+  async function shareEntry() {
+    const text = entry.text.trim();
+    if (!text && entry.photoIds.length === 0) { flash("Nothing to share on this page yet."); return; }
+    const body = `${prettyDate(selected)}\n\n${text}`;
+    try {
+      if (navigator.share) await navigator.share({ title: "My Little Secret Diary", text: body });
+      else { await navigator.clipboard.writeText(body); flash("Entry copied to clipboard."); }
+    } catch { /* user dismissed the share sheet — ignore */ }
+  }
+
+  // Download the whole diary as a self-contained, printable HTML file.
+  async function exportDiary() {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const all = await loadAllEntries(user.id);
+      const html = buildExportHtml(all, greetName || user.email);
+      const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+      const a = document.createElement("a");
+      a.href = url; a.download = `my-little-secret-diary-${todayKey()}.html`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      flash(all.length ? "Diary exported." : "No entries to export yet.");
+    } catch { flash("Export failed — try again."); }
+    setExporting(false);
+  }
+
   const isToday = selected === todayKey();
   const isBlank = !entry.text.trim() && entry.photoIds.length === 0;
   const showWelcome = isToday && isBlank && !loadingEntry;
@@ -471,6 +539,9 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
         <button onClick={() => { onEditProfile?.(); setDrawerOpen(false); }} style={sideBtn}>
           <UserRound size={15} /> Edit profile
         </button>
+        <button onClick={exportDiary} disabled={exporting} style={{ ...sideBtn, cursor: exporting ? "default" : "pointer", opacity: exporting ? 0.6 : 1 }}>
+          {exporting ? <Loader2 size={15} className="spin" /> : <Download size={15} />} Export diary
+        </button>
         <button onClick={onLogout} style={primarySideBtn}>
           <LogOut size={15} /> Close the diary
         </button>
@@ -518,6 +589,11 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            <button onClick={shareEntry} aria-label="Share this day" title="Share this day"
+              style={{ width: 44, height: 44, borderRadius: "50%", flexShrink: 0, cursor: "pointer",
+                border: `1px solid ${C.line}`, background: C.page, color: C.ink, display: "grid", placeItems: "center" }}>
+              <Share2 size={18} />
+            </button>
             {speechSupported && (
               <button onClick={toggleMic} aria-label={recording ? "Stop dictation" : "Dictate with your voice"}
                 title={recording ? "Stop dictation" : "Dictate"} className={recording ? "mic-pulse" : ""}
@@ -604,6 +680,14 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
               border: "none", cursor: "pointer", background: "rgba(255,255,255,0.14)", color: "#fff", display: "grid", placeItems: "center" }}>
             <X size={20} />
           </button>
+        </div>
+      )}
+
+      {toast && (
+        <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", bottom: "max(20px, env(safe-area-inset-bottom))",
+          zIndex: 60, background: C.ink, color: C.paper, fontFamily: ui, fontSize: 14, padding: "10px 16px", borderRadius: 999,
+          boxShadow: "0 10px 30px -10px rgba(0,0,0,0.5)" }}>
+          {toast}
         </div>
       )}
     </div>
