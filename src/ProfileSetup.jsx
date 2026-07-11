@@ -9,11 +9,6 @@ import { saveProfile, getProfile } from "./profile.js";
      - "edit":    reopened later from the diary to update details.
    Every field is optional. */
 
-const GENDERS = [
-  { key: "female", label: "Female", sym: "♀" },
-  { key: "male", label: "Male", sym: "♂" },
-  { key: "other", label: "Other", sym: "⚢" },
-];
 const INTERESTS = [
   "Reading", "Travel", "Music", "Art", "Cooking", "Fitness",
   "Photography", "Writing", "Gardening", "Fashion", "Technology", "Cinema",
@@ -58,7 +53,6 @@ export default function ProfileSetup({ user, onDone, onCancel, mode = "onboard" 
   const phone = usePhone();
   const accountEmail = (user.email || "").includes("@") ? user.email : ""; // sign-in email
 
-  const [gender, setGender] = useState("");
   const [firstName, setFirstName] = useState(user.displayName || "");
   const [lastName, setLastName] = useState("");
   const [birthMonth, setBirthMonth] = useState("");
@@ -81,7 +75,6 @@ export default function ProfileSetup({ user, onDone, onCancel, mode = "onboard" 
     (async () => {
       const saved = await getProfile(user.id);
       if (!alive || !saved) return;
-      setGender(saved.gender || "");
       if (saved.firstName) setFirstName(saved.firstName);
       setLastName(saved.lastName || "");
       setBirthMonth(saved.birthMonth ? String(saved.birthMonth) : "");
@@ -112,7 +105,7 @@ export default function ProfileSetup({ user, onDone, onCancel, mode = "onboard" 
     setErr("");
     try {
       await saveProfile(user.id, {
-        gender, firstName, lastName, address, phone: phoneNo, email, interests, about, avatar,
+        firstName, lastName, address, phone: phoneNo, email, interests, about, avatar,
         birthMonth: birthMonth ? Number(birthMonth) : null,
         birthDay: birthDay ? Number(birthDay) : null,
       });
@@ -200,23 +193,6 @@ export default function ProfileSetup({ user, onDone, onCancel, mode = "onboard" 
             </div>
             <input ref={fileInput} type="file" accept="image/*" style={{ display: "none" }}
               onChange={(e) => { onPhoto(e.target.files); e.target.value = ""; }} />
-          </div>
-
-          {/* Gender */}
-          <div style={{ marginBottom: 20 }}>
-            <label style={label}>Gender</label>
-            <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
-              {GENDERS.map((g) => {
-                const on = gender === g.key;
-                return (
-                  <button key={g.key} type="button" onClick={() => setGender(on ? "" : g.key)}
-                    style={{ flex: 1, minHeight: 46, borderRadius: 10, cursor: "pointer", fontFamily: font.ui, fontSize: 14.5, fontWeight: 500,
-                      background: on ? C.ink : C.page, color: on ? C.page : C.ink, border: `1px solid ${on ? C.ink : C.line}` }}>
-                    {g.sym}&nbsp; {g.label}
-                  </button>
-                );
-              })}
-            </div>
           </div>
 
           {/* Names */}
