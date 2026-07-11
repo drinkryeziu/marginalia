@@ -228,11 +228,12 @@ function Calendar({ selected, index, onPick }) {
           const sel = k === selected;
           const today = k === todayK;
           const entry = has.has(k);
+          const future = k > todayK; // days ahead of today are read-only
           return (
             <button key={k} onClick={() => onPick(k)} aria-label={k}
               style={{ position: "relative", aspectRatio: "1 / 1", minHeight: 30,
                 border: today && !sel ? `1px solid ${C.brass}` : "1px solid transparent", borderRadius: 8, cursor: "pointer",
-                fontFamily: body, fontSize: 13.5, fontWeight: entry || today ? 600 : 400,
+                fontFamily: body, fontSize: 13.5, fontWeight: entry || today ? 600 : 400, opacity: future ? 0.4 : 1,
                 background: sel ? "#7B5836" : "transparent", color: sel ? "#fff" : (entry ? C.ink : C.faint),
                 display: "grid", placeItems: "center" }}>
               {d}
@@ -475,6 +476,7 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
   }
 
   const isToday = selected === todayKey();
+  const isFuture = selected > todayKey(); // can't write ahead of today
   const isBlank = !entry.text.trim() && entry.photoIds.length === 0;
   const showWelcome = isToday && isBlank && !loadingEntry;
 
@@ -588,6 +590,7 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
               </>)}
             </div>
           </div>
+          {!isFuture && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
             <button onClick={shareEntry} aria-label="Share this day" title="Share this day"
               style={{ width: 44, height: 44, borderRadius: "50%", flexShrink: 0, cursor: "pointer",
@@ -613,6 +616,7 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
             </button>
             ); })()}
           </div>
+          )}
           <input ref={fileInput} type="file" accept="image/*" multiple style={{ display: "none" }}
             onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }} />
         </header>
@@ -636,13 +640,23 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
             ) : (
               <div style={{ marginBottom: 18 }}>
                 <p style={{ fontFamily: ui, fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase", color: C.brass, margin: 0 }}>
-                  {isBirthday ? `🎉 Happy Birthday, ${greetName}!` : (isToday ? "Today" : "On this day")}
+                  {isBirthday ? `🎉 Happy Birthday, ${greetName}!` : isFuture ? "Upcoming" : (isToday ? "Today" : "On this day")}
                 </p>
                 <h1 style={{ fontFamily: display, fontSize: dateSize, fontWeight: 500, color: C.ink, margin: "7px 0 0", letterSpacing: "-0.01em", lineHeight: 1.2 }}>{prettyDate(selected)}</h1>
                 <div style={{ height: 1, background: C.line, margin: "20px 0 0" }} />
               </div>
             )}
 
+            {isFuture ? (
+              <div style={{ flex: 1, minHeight: phone ? 200 : 240, display: "grid", placeItems: "center", textAlign: "center", padding: "20px 0" }}>
+                <div>
+                  <p style={{ fontFamily: display, fontSize: phone ? 20 : 22, fontWeight: 500, color: C.ink, margin: 0 }}>This page is still ahead.</p>
+                  <p style={{ fontFamily: body, fontStyle: "italic", fontSize: 15.5, color: C.inkSoft, margin: "10px 0 0", lineHeight: 1.6 }}>
+                    You can't write ahead of today — come back on {prettyDate(selected).replace(/,\s\d{4}$/, "")} to fill it in.
+                  </p>
+                </div>
+              </div>
+            ) : (<>
             <div ref={editorRef} className="entry-editor" contentEditable suppressContentEditableWarning
               role="textbox" aria-multiline="true" spellCheck
               data-placeholder={showWelcome ? "Dear diary…" : "Continue the day…"}
@@ -667,6 +681,7 @@ export default function DiaryApp({ user, onLogout, onEditProfile }) {
               </div>
             )}
             {uploadErr && <p style={{ fontFamily: body, color: C.danger, fontSize: 13.5, marginTop: 14 }}>{uploadErr}</p>}
+            </>)}
           </div>
         </div>
       </main>
